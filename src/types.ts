@@ -1,0 +1,80 @@
+export type Hint = "hoog" | "midden" | "laag";
+
+export interface CheckInfo {
+  /** Vaste ID van de controle. */
+  id: string;
+  /** Naam van het punt in de pre-launch checklist. */
+  item: string;
+  /** Categorie in de checklist. */
+  category: string;
+  /** Standaardprioriteit; Claude beslist de uiteindelijke prioriteit in het rapport. */
+  hint: Hint;
+}
+
+/** De controles die deze versie uitvoert, gekoppeld aan de checklist. */
+export const CHECKS = {
+  brokenLinks: { id: "broken-links", item: "Linking Pages", category: "Usability and Design", hint: "hoog" },
+  emptyLinks: { id: "empty-links", item: "Linking Pages", category: "Usability and Design", hint: "midden" },
+  heading1: { id: "heading-1", item: "Heading 1", category: "SEO", hint: "hoog" },
+  headingStructure: { id: "heading-structure", item: "Heading Structure", category: "SEO", hint: "laag" },
+  horizontalScroll: { id: "horizontal-scroll", item: "Horizontal Scroll", category: "Usability and Design", hint: "hoog" },
+  imageAlt: { id: "image-alt", item: "Image Alt Texts", category: "SEO", hint: "midden" },
+  missingContent: { id: "missing-content", item: "Missing Content", category: "Usability and Design", hint: "hoog" },
+  formSuccess: { id: "form-success-message", item: "Form Success Message", category: "Forms", hint: "hoog" },
+  formError: { id: "form-error-message", item: "Form Error Message", category: "Forms", hint: "hoog" },
+  formName: { id: "form-name", item: "Form Settings", category: "Forms", hint: "midden" },
+  formInputs: { id: "form-inputs", item: "Input Settings", category: "Forms", hint: "midden" },
+  emptyState: { id: "empty-state", item: "Empty CMS List State", category: "CMS Pages", hint: "midden" },
+  favicon: { id: "favicon", item: "Favicon and Web Clip", category: "Project Settings", hint: "midden" },
+  webflowBadge: { id: "webflow-badge", item: "Remove Webflow Branding", category: "Project Settings", hint: "hoog" },
+  lang: { id: "lang", item: "Language Code", category: "Project Settings", hint: "midden" },
+} as const satisfies Record<string, CheckInfo>;
+
+export interface Finding {
+  /** Stabiele ID: dezelfde bug op dezelfde plek geeft dezelfde ID. */
+  id: string;
+  check: string;
+  item: string;
+  category: string;
+  hint: Hint;
+  /** "na te kijken" als de controle niet zeker is. */
+  label?: "na te kijken";
+  /** Pagina('s) waar de bug voorkomt, als pad. */
+  pages: string[];
+  viewport?: number;
+  browser: "chromium";
+  message: string;
+  element?: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface PageResult {
+  url: string;
+  path: string;
+  status: number | null;
+  finalUrl: string;
+  error?: string;
+}
+
+export interface CheckupSummary {
+  pages: number;
+  pagesWithErrors: number;
+  findings: number;
+  byHint: Record<Hint, number>;
+  byCheck: Record<string, number>;
+  stoppedAtMaxPages: boolean;
+}
+
+export type JobStatus = "queued" | "running" | "done" | "failed";
+
+export interface Job {
+  id: string;
+  url: string;
+  status: JobStatus;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  progress: { pagesDone: number; pagesFound: number; phase: string };
+  error?: string;
+  summary?: CheckupSummary;
+}
