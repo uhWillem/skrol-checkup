@@ -16,13 +16,14 @@ Je voert de check-up uit met de tools van de Skrol-browsertool (`start_checkup`,
 5. **Lay-out nakijken.** Bevindingen van `overlap`, `clipped-text`, `text-outside` en `image-text-order` hebben "na te kijken": de tool meet ze, maar weet niet of het er fout uitziet. Bekijk ze met `get_screenshot` (url = start-URL + pagina, `width` = `viewport` van de bevinding, `selector` = `element`). Zie je de fout op het screenshot, dan is het een zekere bug met als bewijs "screenshot op N px". Zie je ze niet, laat ze dan weg. Zijn er veel van dezelfde soort, bekijk er dan een paar en zeg in het rapport hoeveel je bekeken hebt.
 6. **Pagina's bekijken.** Dit is het checklist-punt "Check on All Devices and Small Laptops". Haal `list_pages` op en bekijk de homepage en één pagina per sectie op 1440, 992 en 390 px; vraag de volgende delen op (`part`) als de pagina langer is. Kijk naar wat de metingen niet zien: elementen die verspringen of verdwijnen, witruimte die niet klopt, afbeeldingen die verkeerd uitgesneden zijn, een menu of footer die niet past. Meld enkel duidelijke fouten, met "screenshot op N px" als bewijs. Houd het bij een twintigtal screenshots. Sla je deze stap over, zet het punt dan op de afvinklijst.
 7. **Rapport schrijven** volgens [references/rapport.md](references/rapport.md).
-8. **Fixes** enkel als het team erom vraagt, bv. "fix 1, 4 en 7". Zie "Fixes" hieronder.
+8. **Fixes** enkel als het team erom vraagt, bv. "fix I3, R1 en L2". Zie "Fixes" hieronder.
 
 ## Regels voor het rapport
 
 - Elke bug in het rapport komt uit een bevinding van de tool, of uit een screenshot die je zelf bekeek met `get_screenshot`. Verzin geen bugs en vul niets aan uit eigen veronderstellingen.
+- Het rapport is ingedeeld per soort fout (Inhoud, Responsive, Links, Formulieren, SEO, Afbeeldingen en stijl, CMS, Projectinstellingen), met een code per bug (I1, R2, …), met de prioriteit als bolletje: 🔴 hoog, 🟠 midden, 🟡 laag.
 - Neem de prioriteit van de tool over (`hint`). Wijk enkel af als het bewijs duidelijk anders zegt, en zeg dan waarom. De regels staan in [references/prioriteiten.md](references/prioriteiten.md).
-- Bevindingen met `label: "na te kijken"` blijven in een aparte sectie. Presenteer ze nooit als zekere bug, behalve lay-outbevindingen die je op een screenshot bevestigd hebt (stap 5).
+- Bevindingen met `label: "na te kijken"` krijgen het witte bolletje ⚪ en staan onderaan hun soort. Presenteer ze nooit als zekere bug, behalve lay-outbevindingen die je op een screenshot bevestigd hebt (stap 5).
 - Een bevinding met meerdere pagina's is één bug. Noem de eerste pagina's en het totaal (`pageCount`).
 - Gebruik `evidence` om de bug concreet te maken: welk element, welke waarde, welke link.
 - Staat er geen `liveDomain` in de samenvatting, zeg dan bovenaan het rapport dat links naar het live domein als externe links geteld zijn.
