@@ -71,6 +71,10 @@ Alle instellingen gaan via omgevingsvariabelen; zie `.env.example`. De belangrij
 
 De tag van de Playwright-image in de `Dockerfile` moet overeenkomen met de versie van `playwright` in `package.json`.
 
+## Skill voor Claude
+
+In `skill/webflow-checkup/` staat de skill die Claude vertelt hoe het de tools gebruikt: de werkwijze, de prioriteitsregels, het rapportformaat en welke fixes Claude mag uitvoeren via de Webflow-connector. `references/checklist.md` bevat alle 74 punten uit de pre-launch checklist; wat niet in `coverage` staat, komt als afvinklijst onderaan het rapport.
+
 ## Volgende stappen
 
 Uit het technisch plan, in volgorde:
