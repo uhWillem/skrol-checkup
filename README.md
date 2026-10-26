@@ -2,7 +2,7 @@
 
 MCP-server voor de Webflow check-up bot van Skrol. De server crawlt een site in een headless Chromium, voert vaste controles uit uit de pre-launch checklist, en geeft de bevindingen aan Claude. Er zit geen AI in de server: dezelfde site geeft elke keer dezelfde bevindingen. Claude beoordeelt en schrijft het rapport.
 
-Zie het technisch plan voor de volledige architectuur. Dit is versie 0.2: de eerste versie, bijgestuurd na de eerste echte check-up (in4care).
+Zie het technisch plan voor de volledige architectuur. Dit is versie 0.3: de eerste versie, bijgestuurd na de eerste echte check-up (in4care), met lay-outcontroles en screenshots.
 
 ## Tools
 
@@ -11,6 +11,8 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.2: de eer
 | `start_checkup` | Start een check-up voor een URL als achtergrondtaak en geeft een job-ID terug. Optioneel `live_domain` (bv. `klant.be`): zie "Live domein" hieronder. |
 | `get_checkup_status` | Status en voortgang; als de job klaar is, een samenvatting en de lijst gecontroleerde checklist-punten. |
 | `get_findings` | Bevindingen, gesorteerd op prioriteit, te filteren op controle, pagina of prioriteit, per 100. |
+| `list_pages` | Alle gecontroleerde pagina's met statuscode, per sectie (bv. `/blog`). |
+| `get_screenshot` | Screenshot van een pagina op een schermbreedte: de volledige pagina in delen, of het stuk rond een element (`selector`) met het element omkaderd. Zo kijkt Claude lay-outbevindingen na en beoordeelt het pagina's. Screenshots worden niet bewaard. |
 
 ## Wat deze versie controleert
 
@@ -32,6 +34,11 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.2: de eer
 | `favicon` | Favicon and Web Clip: ontbrekend of het Webflow-standaardicoon. | midden / laag |
 | `webflow-badge` | Remove Webflow Branding: de badge staat op de pagina. Op een .webflow.io-domein "na te kijken": zonder betaald site plan toont Webflow de badge daar altijd. | hoog |
 | `lang` | Language Code: geen of een ongeldig lang-attribuut. | midden |
+| `overlap` | Check on All Devices: tekst die over andere tekst valt, per schermbreedte. "Na te kijken": Claude bevestigt met een screenshot. | hoog |
+| `clipped-text` | Check on All Devices: tekst die deels wegvalt in een vak met overflow hidden. Bewust afkorten (puntjes, line clamp) en sliders of logobalken tellen niet. "Na te kijken". | hoog |
+| `text-outside` | Check on All Devices: tekst die buiten een knop, tag of badge loopt. "Na te kijken". | midden |
+| `image-quality` | Blurry Images: afbeeldingen die meer dan 1,25× vergroot worden (wazig) of uitgerekt zijn omdat object-fit ontbreekt. SVG's tellen niet. | midden |
+| `image-text-order` | Image + Text: een beeld en een tekstblok die naast elkaar staan, en op gsm (tot 480 px) met de tekst boven het beeld. "Na te kijken". | midden |
 
 Afbeeldingen in de Webflow-badge en kaarttegels tellen niet mee voor alt-teksten, net als een lege alt in een link die al tekst heeft (bv. een pijltje naast "Lees meer").
 
@@ -39,7 +46,7 @@ Afbeeldingen in de Webflow-badge en kaarttegels tellen niet mee voor alt-teksten
 
 Op staging verwijzen oude links vaak nog naar het live domein van de klant (bv. `https://www.klant.be/oude-pagina`). Na de lancering draait de nieuwe site op dat domein, dus de tool controleert zo'n link op de nieuwe site: bestaat `/oude-pagina` daar niet, dan is het een kapotte interne link (hoog). Het live domein komt uit `live_domain` bij `start_checkup`, of anders uit `sitemap.xml` als Webflow daar het live domein in zet. De samenvatting toont welk domein gebruikt is (`liveDomain`, `liveDomainSource`).
 
-Elke pagina wordt in Chromium geladen op 1440 px en daarna verkleind naar 1280, 992, 768, 390 en 360 px voor de scrollcontrole. Bevindingen die op meerdere pagina's voorkomen (bv. een favicon of een formulier in de footer) worden samengevoegd tot één bevinding met alle pagina's.
+Elke pagina wordt in Chromium geladen op 1440 px en één keer helemaal doorgescrold, zodat lazy afbeeldingen laden en scroll-animaties afspelen. Daarna wordt de pagina verkleind naar 1280, 992, 768, 390 en 360 px voor de scroll- en lay-outcontroles. Loopt een controle vast op een pagina, dan gaan de andere controles door en staat de fout bij die pagina in `list_pages`. Bevindingen die op meerdere pagina's voorkomen (bv. een favicon of een formulier in de footer) worden samengevoegd tot één bevinding met alle pagina's.
 
 ## Lokaal draaien
 
@@ -86,9 +93,7 @@ In `skill/webflow-checkup/` staat de skill die Claude vertelt hoe het de tools g
 
 Uit het technisch plan, in volgorde:
 
-1. Docker op de VPS via Coolify, connector in Claude, eerste versie van de skill, eerste run op een afgerond project.
-2. Overige controles uit de checklist-mapping.
-3. Firefox en WebKit, Lighthouse.
-4. Webflow-lezer (Data API v2 met een token met enkel leesrechten).
-5. Authenticatie (API-sleutel via request headers of OAuth).
-6. `get_screenshot` en `list_pages`.
+1. Overige browsercontroles uit de checklist-mapping: navigatie (blijft bovenaan, menu op gsm), hoverstijlen, fonts, robots.txt, sitemap, schema, GTM en de andere punten met "Browsertool".
+2. Firefox en WebKit, Lighthouse.
+3. Webflow-lezer (Data API v2 met een token met enkel leesrechten): SEO-velden, CMS-velden en -items, slugs, paginanamen, tijdzone.
+4. Authenticatie (OAuth in plaats van een API-sleutel in de URL-instellingen).

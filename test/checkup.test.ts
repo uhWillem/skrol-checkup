@@ -27,7 +27,8 @@ after(() => {
 
 test("vindt alle pagina's: via links, via de sitemap, en de kapotte pagina", () => {
   const paths = result.pages.map((p) => p.path).sort();
-  assert.deepEqual(paths, ["/", "/bestaat-niet", "/cms", "/formulier", "/fout", "/over", "/over-copy", "/verborgen"]);
+  assert.deepEqual(paths, ["/", "/bestaat-niet", "/cms", "/formulier", "/fout", "/layout", "/over", "/over-copy", "/verborgen"]);
+  assert.equal(result.summary.analysisErrors, undefined, "geen vastgelopen controles");
   assert.equal(result.summary.pagesWithErrors, 1);
   assert.equal(result.summary.stoppedAtMaxPages, false);
 });
@@ -117,6 +118,38 @@ test("formulieren: standaardmeldingen, naam en velden; het nieuwsbriefformulier 
   }
   const issues = find("form-inputs")[0].evidence?.issues as Array<{ name: string }>;
   assert.deepEqual(issues.map((i) => i.name).sort(), ["Field", "email"]);
+});
+
+test("lay-out: overlap, afgesneden tekst, tekst buiten knop, afbeeldingen en volgorde op mobiel", () => {
+  const layoutChecks = ["overlap", "clipped-text", "text-outside", "image-quality", "image-text-order"];
+  const all = result.findings.filter((f) => layoutChecks.includes(f.check));
+  assert.ok(all.every((f) => f.pages.length === 1 && f.pages[0] === "/layout"), all.map((f) => `${f.pages} ${f.message}`).join("\n"));
+
+  const overlap = find("overlap");
+  assert.equal(overlap.length, 1, overlap.map((f) => f.message).join("\n"));
+  assert.match(overlap[0].message, /Deze titel valt over/);
+  assert.equal(overlap[0].label, "na te kijken");
+  assert.deepEqual(overlap[0].evidence?.viewports, [1440, 1280, 992, 768, 390, 360]);
+
+  const clipped = find("clipped-text");
+  assert.equal(clipped.length, 1, "de afkorting met puntjes en de logobalk tellen niet");
+  assert.equal(clipped[0].element, "div.clip-box");
+
+  const outside = find("text-outside");
+  assert.equal(outside.length, 1, "de knop met padding is in orde");
+  assert.equal(outside[0].element, "a.knop");
+
+  const images = find("image-quality");
+  const problems = images.map((f) => String(f.evidence?.problem)).sort();
+  assert.deepEqual(problems, ["blurry", "stretched"], images.map((f) => f.message).join("\n"));
+  assert.match(images.find((f) => f.evidence?.problem === "stretched")!.element!, /uitgerekt/);
+  assert.match(images.find((f) => f.evidence?.problem === "blurry")!.element!, /wazig/);
+  assert.ok(images.every((f) => f.label === undefined), "uitgerekt en wazig zijn zeker");
+
+  const order = find("image-text-order");
+  assert.equal(order.length, 1, "enkel het blok met de tekst links");
+  assert.match(order[0].message, /Tekst eerst Dit blok/);
+  assert.deepEqual(order[0].evidence?.viewports, [390, 360]);
 });
 
 test("lege collectie met standaardtekst", () => {

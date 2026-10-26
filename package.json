@@ -1,6 +1,6 @@
 {
   "name": "skrol-checkup",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Webflow check-up bot: MCP-server met browsercontroles",
   "scripts": {
     "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",

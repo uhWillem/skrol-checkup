@@ -38,7 +38,7 @@ Bevindingen die de tool niet zeker kon vaststellen. Het team bevestigt ze of sch
 
 - Nummer de bugs doorlopend over alle secties, zodat het team kan zeggen "fix 1, 4 en 7".
 - Pagina: het pad van de eerste pagina, en `(+n)` als de bug op meer pagina's staat.
-- Bewijs: één korte regel uit `evidence` of `element`. Geen volledige JSON.
+- Bewijs: één korte regel uit `evidence` of `element`, of "screenshot op 390 px" als je de fout op een screenshot zag. Geen volledige JSON.
 - Voorstel: wat het team in Webflow moet aanpassen, in één zin.
 - Claude kan fixen: "Ja" enkel voor de soorten fixes uit SKILL.md, anders "Nee".
 - Stopte de check-up aan het vangnet (`stoppedAtMaxPages`), zeg dat bovenaan het rapport.

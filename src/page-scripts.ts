@@ -265,3 +265,272 @@ export const MEASURE_OVERFLOW = String.raw`(() => {
   }
   return { viewportWidth, scrollWidth, canScrollX, hiddenByOverflow, offenders };
 })()`;
+
+export interface RawLayout {
+  overlaps: Array<{ a: string; b: string; textA: string; textB: string; area: number }>;
+  clipped: Array<{ selector: string; text: string; outX: number; outY: number }>;
+  outside: Array<{ selector: string; text: string; outX: number; outY: number }>;
+  images: Array<{
+    selector: string;
+    src: string;
+    natural: [number, number];
+    rendered: [number, number];
+    objectFit: string;
+    stretched: boolean;
+    scale: number;
+  }>;
+  /** Paren van beeld en tekst waar de tekst boven het beeld staat (enkel zinvol op mobiel). */
+  textAbove: Array<{ selector: string; text: string }>;
+}
+
+/** Scrolt de pagina in stappen naar beneden, zodat lazy afbeeldingen laden en scroll-animaties afspelen. */
+export const AUTO_SCROLL = String.raw`(async () => {
+  const step = Math.max(300, Math.round(window.innerHeight * 0.8));
+  const max = Math.min(document.documentElement.scrollHeight, 40000);
+  for (let y = step; y < max + step; y += step) {
+    window.scrollTo(0, y);
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  window.scrollTo(0, 0);
+  await new Promise((r) => setTimeout(r, 200));
+})()`;
+
+/**
+ * Zoekt op de brede viewport secties met een beeld en een tekstblok naast elkaar
+ * en markeert ze, zodat MEASURE_LAYOUT op mobiel de volgorde kan nakijken.
+ */
+export const MARK_PAIRS = String.raw`(() => {
+  const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
+  const area = (el) => { const r = el.getBoundingClientRect(); return r.width * r.height; };
+  const mediaArea = (el) => {
+    let best = getComputedStyle(el).backgroundImage !== "none" ? area(el) : 0;
+    for (const m of el.querySelectorAll("img, video, iframe, picture")) best = Math.max(best, area(m));
+    for (const c of el.children) if (getComputedStyle(c).backgroundImage !== "none") best = Math.max(best, area(c));
+    return best;
+  };
+  let n = 0;
+  for (const p of document.body.querySelectorAll("*")) {
+    if (n >= 50) break;
+    const d = getComputedStyle(p).display;
+    if (!/flex|grid/.test(d)) continue;
+    const kids = [...p.children].filter((c) => {
+      const s = getComputedStyle(c);
+      return s.display !== "none" && s.position !== "absolute" && s.position !== "fixed" && c.getBoundingClientRect().height > 0;
+    });
+    if (kids.length < 2 || kids.length > 3) continue;
+    let media = null, text = null;
+    for (const c of kids) {
+      const len = clean(c.innerText).length;
+      const m = mediaArea(c);
+      if (m >= 40000 && len < 30) media = c;
+      else if (len >= 60 && m < 10000) text = c;
+    }
+    if (!media || !text) continue;
+    const a = media.getBoundingClientRect(), b = text.getBoundingClientRect();
+    const sideBySide = (a.right <= b.left + 5 || b.right <= a.left + 5) &&
+      Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5 * Math.min(a.height, b.height);
+    if (!sideBySide) continue;
+    p.setAttribute("data-skrol-pair", String(n++));
+    media.setAttribute("data-skrol-role", "media");
+    text.setAttribute("data-skrol-role", "text");
+  }
+  return n;
+})()`;
+
+/** Meet bij de huidige viewport: overlappende tekst, afgesneden tekst, tekst buiten knoppen, afbeeldingen en beeld/tekst-volgorde. */
+export const MEASURE_LAYOUT = String.raw`(() => {
+  ${HELPERS}
+  const sx = window.scrollX, sy = window.scrollY;
+  const vw = document.documentElement.clientWidth;
+  const styles = new Map();
+  const cs = (el) => { let s = styles.get(el); if (!s) { s = getComputedStyle(el); styles.set(el, s); } return s; };
+  const alpha = (c) => {
+    const m = /rgba?\(([^)]+)\)/.exec(c || "");
+    if (!m) return c === "transparent" ? 0 : 1;
+    const p = m[1].split(/[\s,\/]+/).filter(Boolean);
+    return p.length >= 4 ? Number.parseFloat(p[3]) : 1;
+  };
+  const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "SELECT", "OPTION", "TEXTAREA", "IFRAME", "TEMPLATE", "CODE", "PRE"]);
+  // Onderdelen die bewust bewegen, schuiven of verbergen: daar is overlap of afsnijden normaal.
+  const SKIP_CLASS = /(^|[\s_-])(marquee|ticker|slider|carousel|swiper|splide|w-slider|w-tab-content|w-dropdown-list|w-nav-overlay|w-lightbox)([\s_-]|$)/i;
+  const infos = new Map();
+  const info = (el) => {
+    if (!el || el.nodeType !== 1 || el === document.documentElement) return { skip: false, fixed: false, opacity: 1, hidden: false };
+    let i = infos.get(el);
+    if (i) return i;
+    const parent = info(el.parentElement);
+    const s = cs(el);
+    const cls = el.getAttribute("class") || "";
+    i = {
+      skip: parent.skip || SKIP_TAGS.has(el.tagName.toUpperCase()) || SKIP_CLASS.test(cls) || el.getAttribute("aria-hidden") === "true",
+      fixed: parent.fixed || s.position === "fixed" || s.position === "sticky",
+      opacity: parent.opacity * (Number.isFinite(Number.parseFloat(s.opacity)) ? Number.parseFloat(s.opacity) : 1),
+      hidden: parent.hidden || s.visibility === "hidden" || s.display === "none",
+    };
+    infos.set(el, i);
+    return i;
+  };
+  const blockOf = (el) => {
+    let n = el;
+    while (n && n !== document.body) {
+      const d = cs(n).display;
+      if (d !== "inline" && d !== "contents") return n;
+      n = n.parentElement;
+    }
+    return n;
+  };
+
+  // Tekstregels per blok, in paginacoördinaten.
+  const owners = new Map();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let nodes = 0;
+  for (let node = walker.nextNode(); node && nodes < 5000; node = walker.nextNode()) {
+    const text = node.textContent;
+    if (!text || text.trim().length < 2) continue;
+    const el = node.parentElement;
+    if (!el) continue;
+    const inf = info(el);
+    if (inf.skip || inf.fixed || inf.hidden || inf.opacity < 0.5) continue;
+    const s = cs(el);
+    if (alpha(s.color) < 0.5 || alpha(s.webkitTextFillColor || s.color) < 0.5) continue;
+    range.selectNodeContents(node);
+    const rects = [...range.getClientRects()].filter((r) => r.width >= 4 && r.height >= 4 && r.right > 0 && r.left < vw);
+    if (!rects.length) continue;
+    nodes++;
+    const owner = blockOf(el);
+    let entry = owners.get(owner);
+    if (!entry) { entry = { owner, id: owners.size, rects: [] }; owners.set(owner, entry); }
+    for (const r of rects) entry.rects.push({ l: r.left + sx, t: r.top + sy, r: r.right + sx, b: r.bottom + sy });
+  }
+
+  // 1. Tekst die over andere tekst valt.
+  const all = [];
+  for (const entry of owners.values()) for (const r of entry.rects) all.push({ l: r.l, t: r.t, r: r.r, b: r.b, e: entry });
+  all.sort((a, b) => a.t - b.t);
+  const pairs = new Map();
+  outer: for (let i = 0; i < all.length; i++) {
+    const a = all[i];
+    for (let j = i + 1; j < all.length && all[j].t < a.b; j++) {
+      const b = all[j];
+      if (a.e === b.e) continue;
+      const w = Math.min(a.r, b.r) - Math.max(a.l, b.l);
+      const h = Math.min(a.b, b.b) - Math.max(a.t, b.t);
+      if (w <= 2 || h <= 2) continue;
+      const smaller = Math.min((a.r - a.l) * (a.b - a.t), (b.r - b.l) * (b.b - b.t));
+      if (w * h < smaller * 0.3) continue;
+      if (a.e.owner.contains(b.e.owner) || b.e.owner.contains(a.e.owner)) continue;
+      const key = Math.min(a.e.id, b.e.id) + "|" + Math.max(a.e.id, b.e.id);
+      if (!pairs.has(key)) pairs.set(key, { a: a.e.owner, b: b.e.owner, area: Math.round(w * h) });
+      if (pairs.size >= 20) break outer;
+    }
+  }
+  const overlaps = [...pairs.values()].map((p) => ({
+    a: selectorOf(p.a), b: selectorOf(p.b),
+    textA: clean(p.a.textContent).slice(0, 60), textB: clean(p.b.textContent).slice(0, 60), area: p.area,
+  }));
+
+  // 2. Tekst die deels wegvalt in een vak met overflow hidden.
+  const clips = (s) => s.overflowX === "hidden" || s.overflowX === "clip" || s.overflowY === "hidden" || s.overflowY === "clip";
+  const truncates = (s) => s.textOverflow === "ellipsis" || (s.webkitLineClamp && s.webkitLineClamp !== "none");
+  const clipOf = (el) => {
+    let n = el;
+    for (let d = 0; n && n !== document.body && d < 6; d++, n = n.parentElement) if (clips(cs(n))) return n;
+    return null;
+  };
+  const clipped = [];
+  const seenClip = new Set();
+  for (const entry of owners.values()) {
+    if (clipped.length >= 20) break;
+    if (truncates(cs(entry.owner))) continue;
+    const box = clipOf(entry.owner);
+    if (!box || seenClip.has(box)) continue;
+    const bs = cs(box);
+    if (truncates(bs)) continue;
+    const br = box.getBoundingClientRect();
+    if (br.width < 10 || br.height < 10) continue;
+    const bl = br.left + sx + box.clientLeft, bt = br.top + sy + box.clientTop;
+    const bR = bl + box.clientWidth, bB = bt + box.clientHeight;
+    const clipX = bs.overflowX === "hidden" || bs.overflowX === "clip";
+    const clipY = bs.overflowY === "hidden" || bs.overflowY === "clip";
+    for (const r of entry.rects) {
+      // Enkel tekst die deels zichtbaar is: helemaal erbuiten is bewust verborgen (bv. een dichtgeklapt blok).
+      if (!(r.r > bl && r.l < bR && r.b > bt && r.t < bB)) continue;
+      const outX = clipX ? Math.max(0, r.r - bR, bl - r.l) : 0;
+      const outY = clipY ? Math.max(0, r.b - bB, bt - r.t) : 0;
+      if (outX > 4 || outY > 4) {
+        seenClip.add(box);
+        clipped.push({ selector: selectorOf(box), text: clean(entry.owner.textContent).slice(0, 60), outX: Math.round(outX), outY: Math.round(outY) });
+        break;
+      }
+    }
+  }
+
+  // 3. Tekst die buiten een knop, tag of badge loopt.
+  const BTN = /(^|[\s_-])(button|btn|tag|pill|badge|chip)([\s_-]|$)/i;
+  const painted = (s) =>
+    alpha(s.backgroundColor) > 0.1 || s.backgroundImage !== "none" ||
+    (Number.parseFloat(s.borderTopWidth) > 0 && alpha(s.borderTopColor) > 0.1) ||
+    (Number.parseFloat(s.borderLeftWidth) > 0 && alpha(s.borderLeftColor) > 0.1);
+  const buttonOf = (el) => {
+    let n = el;
+    for (let d = 0; n && n !== document.body && d < 3; d++, n = n.parentElement) {
+      const isButton = n.tagName === "A" || n.tagName === "BUTTON" || BTN.test(n.getAttribute("class") || "");
+      if (isButton && painted(cs(n))) return n;
+    }
+    return null;
+  };
+  const outside = [];
+  const seenButton = new Set();
+  for (const entry of owners.values()) {
+    if (outside.length >= 20) break;
+    const btn = buttonOf(entry.owner);
+    if (!btn || seenButton.has(btn) || clips(cs(btn))) continue;
+    const br = btn.getBoundingClientRect();
+    const l = br.left + sx, t = br.top + sy, R = br.right + sx, B = br.bottom + sy;
+    for (const r of entry.rects) {
+      const outX = Math.max(0, r.r - R, l - r.l), outY = Math.max(0, r.b - B, t - r.t);
+      if (outX > 3 || outY > 3) {
+        seenButton.add(btn);
+        outside.push({ selector: selectorOf(btn), text: clean(btn.textContent).slice(0, 60), outX: Math.round(outX), outY: Math.round(outY) });
+        break;
+      }
+    }
+  }
+
+  // 4. Uitgerekte en wazige afbeeldingen.
+  const images = [];
+  for (const img of document.images) {
+    if (images.length >= 30) break;
+    if (!img.complete || !img.naturalWidth || !img.naturalHeight) continue;
+    const src = img.currentSrc || img.src || "";
+    if (/\.svg(\?|#|$)/i.test(src) || /^data:image\/svg/i.test(src)) continue;
+    const inf = info(img);
+    if (inf.skip || inf.hidden || inf.opacity < 0.5 || img.closest(".w-webflow-badge")) continue;
+    const r = img.getBoundingClientRect();
+    if (r.width < 40 || r.height < 40) continue;
+    const fit = cs(img).objectFit;
+    const sw = r.width / img.naturalWidth, sh = r.height / img.naturalHeight;
+    const stretched = fit === "fill" && Math.abs((r.width / r.height) / (img.naturalWidth / img.naturalHeight) - 1) > 0.05;
+    const scale = fit === "contain" || fit === "scale-down" ? Math.min(sw, sh) : fit === "none" ? 1 : Math.max(sw, sh);
+    if (!stretched && scale <= 1.25) continue;
+    images.push({
+      selector: selectorOf(img), src: src.slice(-120),
+      natural: [img.naturalWidth, img.naturalHeight], rendered: [Math.round(r.width), Math.round(r.height)],
+      objectFit: fit, stretched, scale: Math.round(scale * 100) / 100,
+    });
+  }
+
+  // 5. Beeld en tekst: staat de tekst boven het beeld nu ze onder elkaar staan?
+  const textAbove = [];
+  for (const p of document.querySelectorAll("[data-skrol-pair]")) {
+    const m = p.querySelector(":scope > [data-skrol-role='media']");
+    const t = p.querySelector(":scope > [data-skrol-role='text']");
+    if (!m || !t) continue;
+    const mr = m.getBoundingClientRect(), tr = t.getBoundingClientRect();
+    if (!mr.height || !tr.height) continue;
+    if (tr.bottom <= mr.top + 5) textAbove.push({ selector: selectorOf(p), text: clean(t.innerText || t.textContent).slice(0, 60) });
+  }
+
+  return { overlaps, clipped, outside, images, textAbove };
+})()`;

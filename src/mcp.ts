@@ -5,8 +5,9 @@ import type { JobStore } from "./jobs.js";
 import { CHECKS, type Finding } from "./types.js";
 import type { UrlGuard } from "./url-guard.js";
 import { normalizeDomain } from "./discover.js";
+import { takeScreenshot } from "./screenshot.js";
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 const MAX_PAGES_SHOWN = 20;
 
 /** Welke checklist-punten deze versie automatisch controleert. */
@@ -108,6 +109,76 @@ export function createMcpServer(store: JobStore, config: Config, guard: UrlGuard
       const result = await store.findings(job_id, { check, page, hint, offset, limit });
       if (!result) return fail("Resultaten niet gevonden.");
       return json({ total: result.total, offset: result.offset, next_offset: result.nextOffset, findings: result.findings.map(compact) });
+    },
+  );
+
+  server.registerTool(
+    "list_pages",
+    {
+      title: "Pagina's van een check-up",
+      description:
+        "Geeft alle pagina's die een afgeronde check-up gecontroleerd heeft, met statuscode, per sectie gegroepeerd " +
+        "(bv. /blog). Handig om per sectie één pagina te kiezen voor get_screenshot.",
+      inputSchema: { job_id: z.string() },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ job_id }) => {
+      const job = store.get(job_id);
+      if (!job) return fail(`Onbekende job: ${job_id}`);
+      const result = await store.result(job_id);
+      if (!result) return fail(`De check-up is nog niet klaar (status: ${job.status}).`);
+      const sections = new Map<string, number>();
+      for (const p of result.pages) {
+        const section = p.path === "/" ? "/" : `/${p.path.split("/")[1]}`;
+        sections.set(section, (sections.get(section) ?? 0) + 1);
+      }
+      return json({
+        startUrl: result.startUrl,
+        total: result.pages.length,
+        sections: [...sections.entries()].map(([section, count]) => ({ section, count })),
+        pages: result.pages.map((p) => ({
+          path: p.path,
+          status: p.status,
+          ...(p.error ? { error: p.error } : {}),
+          ...(p.analysisError ? { analysisError: p.analysisError } : {}),
+          ...(p.finalUrl && p.finalUrl !== p.url ? { redirectedTo: p.finalUrl } : {}),
+        })),
+      });
+    },
+  );
+
+  server.registerTool(
+    "get_screenshot",
+    {
+      title: "Screenshot van een pagina",
+      description:
+        "Maakt een screenshot van een pagina op een schermbreedte, zodat je de lay-out zelf kunt bekijken. " +
+        "Zonder selector: de volledige pagina in delen; het antwoord zegt hoeveel delen er zijn (parts), vraag de rest op met part. " +
+        "Met selector (bv. het element uit een bevinding): enkel het stuk rond dat element, met het element roze omkaderd. " +
+        "Gebruik dit om lay-outbevindingen met 'na te kijken' te bevestigen en om pagina's op gsm, tablet en laptop te beoordelen.",
+      inputSchema: {
+        url: z.string().url().describe("Volledige URL van de pagina, bv. https://klant.webflow.io/diensten"),
+        width: z.number().int().min(320).max(1920).optional().describe("Schermbreedte in px, standaard 1440. Bv. 1440, 992, 768, 390."),
+        selector: z.string().max(500).optional().describe("CSS-selector van het element, bv. de waarde van element uit een bevinding"),
+        part: z.number().int().min(1).optional().describe("Welk deel van de pagina, zonder selector. Standaard 1."),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ url, width, selector, part }) => {
+      if (!guard.isAllowedPage(url)) {
+        return fail(`Domein niet toegestaan: ${new URL(url).hostname}. Toegestaan: ${config.allowedDomains.join(", ")}.`);
+      }
+      try {
+        const { image, meta } = await takeScreenshot({ url, width: width ?? 1440, selector, part }, config, guard);
+        return {
+          content: [
+            { type: "text" as const, text: JSON.stringify(meta) },
+            { type: "image" as const, data: image.toString("base64"), mimeType: "image/jpeg" },
+          ],
+        };
+      } catch (error) {
+        return fail(`Screenshot mislukt: ${(error as Error).message.split("\n")[0]}`);
+      }
     },
   );
 

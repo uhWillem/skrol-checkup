@@ -4,8 +4,18 @@ import type { Config } from "./config.js";
 import { guardedContext, launchChromium } from "./browser.js";
 import { isLikelyHtml, normalizeDomain, normalizeLinkUrl, normalizePageUrl, pathOf, readSitemap } from "./discover.js";
 import { checkLink, fetchWithGuard, mapLimit, type LinkStatus } from "./links.js";
-import { overflowDrafts, pageDrafts, type Draft } from "./checks.js";
-import { COLLECT_PAGE_DATA, MEASURE_OVERFLOW, type RawLink, type RawOverflow, type RawPageData } from "./page-scripts.js";
+import { layoutDrafts, overflowDrafts, pageDrafts, type Draft } from "./checks.js";
+import {
+  AUTO_SCROLL,
+  COLLECT_PAGE_DATA,
+  MARK_PAIRS,
+  MEASURE_LAYOUT,
+  MEASURE_OVERFLOW,
+  type RawLayout,
+  type RawLink,
+  type RawOverflow,
+  type RawPageData,
+} from "./page-scripts.js";
 import { CHECKS, type CheckupSummary, type Finding, type Hint, type PageResult } from "./types.js";
 import { matchesDomain, type UrlGuard } from "./url-guard.js";
 
@@ -153,22 +163,41 @@ export async function runCheckup(
           error = (e as Error).message.split("\n")[0];
         }
         const finalUrl = page.url();
-        pages.push({ url, path, status, finalUrl, error });
+        const result: PageResult = { url, path, status, finalUrl, error };
+        pages.push(result);
         pageStatus.set(url, error ? null : status);
         if (error || status === null || status >= 400) return;
         if (new URL(finalUrl).origin !== origin) return;
         await settle(page);
+        // Eén keer door de pagina scrollen: lazy afbeeldingen laden en scroll-animaties spelen af.
+        await page.evaluate(AUTO_SCROLL).catch(() => undefined);
+        await settle(page);
 
-        const data = (await page.evaluate(COLLECT_PAGE_DATA)) as RawPageData;
+        let data: RawPageData;
+        try {
+          data = (await page.evaluate(COLLECT_PAGE_DATA)) as RawPageData;
+        } catch (e) {
+          result.analysisError = (e as Error).message.split("\n")[0];
+          return;
+        }
         for (const draft of pageDrafts(data, path, { onWebflowIo })) findings.add(draft, path);
 
-        const measurements: Array<{ width: number; m: RawOverflow }> = [];
-        for (const viewport of config.viewports) {
-          await page.setViewportSize(viewport);
-          await page.waitForTimeout(300);
-          measurements.push({ width: viewport.width, m: (await page.evaluate(MEASURE_OVERFLOW)) as RawOverflow });
+        // Een fout in de lay-outmetingen mag de rest van de pagina niet tegenhouden.
+        try {
+          await page.evaluate(MARK_PAIRS);
+          const overflow: Array<{ width: number; m: RawOverflow }> = [];
+          const layout: Array<{ width: number; l: RawLayout }> = [];
+          for (const viewport of config.viewports) {
+            await page.setViewportSize(viewport);
+            await page.waitForTimeout(300);
+            overflow.push({ width: viewport.width, m: (await page.evaluate(MEASURE_OVERFLOW)) as RawOverflow });
+            layout.push({ width: viewport.width, l: (await page.evaluate(MEASURE_LAYOUT)) as RawLayout });
+          }
+          for (const draft of overflowDrafts(overflow, path)) findings.add(draft, path);
+          for (const draft of layoutDrafts(layout, path)) findings.add(draft, path);
+        } catch (e) {
+          result.analysisError = (e as Error).message.split("\n")[0];
         }
-        for (const draft of overflowDrafts(measurements, path)) findings.add(draft, path);
 
         for (const link of data.links) {
           occurrences.push({ link, page: path });
@@ -228,6 +257,7 @@ export async function runCheckup(
     byHint: { hoog: 0, midden: 0, laag: 0 },
     byCheck: {},
     stoppedAtMaxPages,
+    ...(pages.some((p) => p.analysisError) ? { analysisErrors: pages.filter((p) => p.analysisError).length } : {}),
     ...(liveDomain ? { liveDomain, liveDomainSource } : {}),
   };
   for (const f of list) {

@@ -2,7 +2,7 @@
 // dezelfde sleutel op meerdere pagina's wordt in de runner samengevoegd tot één bevinding.
 
 import { CHECKS, type CheckInfo, type Finding } from "./types.js";
-import type { RawForm, RawOverflow, RawPageData } from "./page-scripts.js";
+import type { RawForm, RawLayout, RawOverflow, RawPageData } from "./page-scripts.js";
 
 export interface Draft extends Omit<Finding, "id" | "pages" | "browser" | "check" | "item" | "category" | "hint"> {
   info: CheckInfo;
@@ -270,4 +270,94 @@ export function overflowDrafts(measurements: Array<{ width: number; m: RawOverfl
     });
   }
   return drafts;
+}
+
+/** Schermbreedtes tot en met deze breedte gelden als mobiel voor de volgorde van beeld en tekst. */
+export const MOBILE_MAX = 480;
+
+/**
+ * Lay-outbevindingen van één pagina over alle schermbreedtes heen: één bevinding per soort en per onderdeel,
+ * met de breedtes waarop ze voorkomt.
+ */
+export function layoutDrafts(measurements: Array<{ width: number; l: RawLayout }>, page: string): Draft[] {
+  const groups = new Map<string, { make: (widths: number[]) => Draft; widths: number[] }>();
+  const add = (key: string, width: number, make: (widths: number[]) => Draft) => {
+    const group = groups.get(key);
+    if (group) {
+      if (!group.widths.includes(width)) group.widths.push(width);
+    } else groups.set(key, { make, widths: [width] });
+  };
+  for (const { width, l } of measurements) {
+    for (const o of l.overlaps) {
+      const [first, second] = [componentOf(o.a), componentOf(o.b)].sort();
+      add(`overlap|${first}|${second}`, width, (widths) => ({
+        info: CHECKS.overlap,
+        key: `overlap|${first}|${second}`,
+        label: "na te kijken",
+        element: o.a,
+        message: `Tekst valt over andere tekst op ${widths.join(", ")} px: "${o.textA}" en "${o.textB}".`,
+        evidence: { viewports: widths, a: o.a, b: o.b, textA: o.textA, textB: o.textB, area: o.area },
+      }));
+    }
+    for (const c of l.clipped) {
+      const key = `clipped|${componentOf(c.selector)}`;
+      add(key, width, (widths) => ({
+        info: CHECKS.clippedText,
+        key,
+        label: "na te kijken",
+        element: c.selector,
+        message: `Tekst wordt afgesneden op ${widths.join(", ")} px: "${c.text}".`,
+        evidence: { viewports: widths, text: c.text, hiddenPx: { x: c.outX, y: c.outY } },
+      }));
+    }
+    for (const o of l.outside) {
+      const key = `outside|${componentOf(o.selector)}`;
+      add(key, width, (widths) => ({
+        info: CHECKS.textOutside,
+        key,
+        label: "na te kijken",
+        element: o.selector,
+        message: `Tekst loopt buiten de knop op ${widths.join(", ")} px: "${o.text}".`,
+        evidence: { viewports: widths, text: o.text, outsidePx: { x: o.outX, y: o.outY } },
+      }));
+    }
+    for (const img of l.images) {
+      const component = componentOf(img.selector);
+      if (img.stretched) {
+        add(`stretched|${component}`, width, (widths) => ({
+          info: CHECKS.imageQuality,
+          key: `stretched|${component}`,
+          element: img.selector,
+          message: `Afbeelding is uitgerekt op ${widths.join(", ")} px: ${img.natural.join("×")} getoond als ${img.rendered.join("×")} zonder object-fit.`,
+          evidence: { problem: "stretched", viewports: widths, src: img.src, natural: img.natural, rendered: img.rendered, objectFit: img.objectFit },
+        }));
+      }
+      if (img.scale > 1.25) {
+        add(`blurry|${component}`, width, (widths) => ({
+          info: CHECKS.imageQuality,
+          key: `blurry|${component}`,
+          element: img.selector,
+          message: `Afbeelding wordt ${img.scale}× vergroot op ${widths.join(", ")} px (bron ${img.natural[0]} px breed, getoond op ${img.rendered[0]} px) en is daardoor wazig.`,
+          evidence: { problem: "blurry", viewports: widths, src: img.src, natural: img.natural, rendered: img.rendered, scale: img.scale },
+        }));
+      }
+    }
+    if (width <= MOBILE_MAX) {
+      for (const t of l.textAbove) {
+        const key = `order|${componentOf(t.selector)}`;
+        add(key, width, (widths) => ({
+          info: CHECKS.imageTextOrder,
+          key,
+          label: "na te kijken",
+          element: t.selector,
+          message: `Op ${widths.join(", ")} px staat de tekst boven de afbeelding: "${t.text}". Volgens de checklist komt de afbeelding op mobiel boven de tekst.`,
+          evidence: { viewports: widths, text: t.text },
+        }));
+      }
+    }
+  }
+  return [...groups.values()].map(({ make, widths }) => {
+    const sorted = [...widths].sort((a, b) => b - a);
+    return { ...make(sorted), viewport: Math.min(...sorted) };
+  });
 }

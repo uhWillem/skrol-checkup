@@ -47,11 +47,14 @@ function int(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+/** Schermhoogte bij een breedte: laptop 900, tablet 1024, gsm 800. */
+export function heightFor(width: number): number {
+  return width >= 992 ? 900 : width >= 768 ? 1024 : 800;
+}
+
 function viewports(value: string | undefined): Viewport[] {
   const widths = list(value, ["1440", "1280", "992", "768", "390", "360"]).map((w) => Number.parseInt(w, 10));
-  return widths
-    .filter((w) => Number.isFinite(w) && w > 0)
-    .map((width) => ({ width, height: width >= 992 ? 900 : width >= 768 ? 1024 : 800 }));
+  return widths.filter((w) => Number.isFinite(w) && w > 0).map((width) => ({ width, height: heightFor(width) }));
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -72,6 +75,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     linkConcurrency: int(env.LINK_CONCURRENCY, 8),
     maxRedirects: int(env.MAX_REDIRECTS, 5),
     chromiumExecutable: env.CHROMIUM_EXECUTABLE ?? "",
-    userAgent: env.USER_AGENT ?? "SkrolCheckup/0.2 (+https://www.skrol.agency)",
+    userAgent: env.USER_AGENT ?? "SkrolCheckup/0.3 (+https://www.skrol.agency)",
   };
 }

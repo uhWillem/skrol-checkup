@@ -46,7 +46,7 @@ test("zonder API-sleutel geweigerd", async () => {
 test("toont de drie tools", async () => {
   const client = await connect();
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name).sort(), ["get_checkup_status", "get_findings", "start_checkup"]);
+  assert.deepEqual(tools.map((t) => t.name).sort(), ["get_checkup_status", "get_findings", "get_screenshot", "list_pages", "start_checkup"]);
   await client.close();
 });
 
@@ -69,7 +69,7 @@ test("volledige check-up: starten, opvolgen, bevindingen ophalen", async () => {
     await new Promise((r) => setTimeout(r, 500));
   }
   assert.equal(status.status, "done", status.error);
-  assert.equal(status.summary.pages, 8);
+  assert.equal(status.summary.pages, 9);
   assert.ok(status.coverage.length >= 10);
 
   const first = parse(await client.callTool({ name: "get_findings", arguments: { job_id: started.job_id, limit: 5 } }));
@@ -83,6 +83,11 @@ test("volledige check-up: starten, opvolgen, bevindingen ophalen", async () => {
 
   const page = parse(await client.callTool({ name: "get_findings", arguments: { job_id: started.job_id, page: "/formulier" } }));
   assert.ok(page.findings.every((f: { pages: string[] }) => f.pages.includes("/formulier")));
+
+  const pages = parse(await client.callTool({ name: "list_pages", arguments: { job_id: started.job_id } }));
+  assert.equal(pages.total, 9);
+  assert.ok(pages.pages.some((p: { path: string; status: number }) => p.path === "/bestaat-niet" && p.status === 404));
+  assert.ok(pages.sections.some((s: { section: string }) => s.section === "/layout"));
   await client.close();
 });
 
@@ -90,6 +95,39 @@ test("ongeldig live domein wordt meteen geweigerd", async () => {
   const client = await connect();
   const result = await client.callTool({ name: "start_checkup", arguments: { url: `${site.origin}/`, live_domain: "geen domein" } });
   assert.equal(result.isError, true);
+  await client.close();
+});
+
+function image(result: Awaited<ReturnType<Client["callTool"]>>) {
+  const content = result.content as Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+  return { meta: JSON.parse(content[0].text!), image: content.find((c) => c.type === "image") };
+}
+
+test("screenshot van de volledige pagina, in delen", async () => {
+  const client = await connect();
+  const result = await client.callTool({ name: "get_screenshot", arguments: { url: `${site.origin}/layout`, width: 390 } });
+  assert.notEqual(result.isError, true, JSON.stringify(result.content));
+  const { meta, image: img } = image(result);
+  assert.equal(img?.mimeType, "image/jpeg");
+  assert.ok((img?.data?.length ?? 0) > 1000);
+  assert.equal(meta.width, 390);
+  assert.equal(meta.part, 1);
+  assert.ok(meta.parts >= 1);
+  assert.ok(meta.height <= 1800);
+  await client.close();
+});
+
+test("screenshot rond een element uit een bevinding", async () => {
+  const client = await connect();
+  const result = await client.callTool({ name: "get_screenshot", arguments: { url: `${site.origin}/layout`, width: 1440, selector: "div.clip-box" } });
+  assert.notEqual(result.isError, true, JSON.stringify(result.content));
+  const { meta, image: img } = image(result);
+  assert.equal(meta.selector, "div.clip-box");
+  assert.ok(img?.data);
+  const missing = await client.callTool({ name: "get_screenshot", arguments: { url: `${site.origin}/layout`, selector: "div.bestaat-niet" } });
+  assert.equal(missing.isError, true);
+  const foreign = await client.callTool({ name: "get_screenshot", arguments: { url: "https://example.com/" } });
+  assert.equal(foreign.isError, true);
   await client.close();
 });
 

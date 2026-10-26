@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isPrivateIp, matchesDomain, UrlGuard } from "../src/url-guard.js";
 import { normalizeDomain, normalizePageUrl, readSitemap } from "../src/discover.js";
-import { componentOf, inputIssues, isFilenameLike, overflowDrafts, pageDrafts, testPageWord } from "../src/checks.js";
-import type { RawPageData } from "../src/page-scripts.js";
+import { componentOf, inputIssues, isFilenameLike, layoutDrafts, overflowDrafts, pageDrafts, testPageWord } from "../src/checks.js";
+import type { RawLayout, RawPageData } from "../src/page-scripts.js";
 import { authorized } from "../src/server.js";
 
 test("matchesDomain: wildcard en kaal domein", () => {
@@ -118,6 +118,30 @@ test("overflowDrafts: scrollen en verborgen overloop", () => {
   assert.equal(drafts.length, 2);
   assert.equal(drafts[0].viewport, 360);
   assert.equal(drafts[1].label, "na te kijken");
+});
+
+test("layoutDrafts: één bevinding per onderdeel met alle breedtes; volgorde enkel op mobiel", () => {
+  const empty: RawLayout = { overlaps: [], clipped: [], outside: [], images: [], textAbove: [] };
+  const withOverlap: RawLayout = {
+    ...empty,
+    overlaps: [{ a: "div.kaart:nth-of-type(2) > h3", b: "div.kaart:nth-of-type(2) > p", textA: "Titel", textB: "Tekst", area: 400 }],
+    textAbove: [{ selector: "section.split", text: "Tekst" }],
+  };
+  const drafts = layoutDrafts(
+    [
+      { width: 1440, l: empty },
+      { width: 992, l: withOverlap },
+      { width: 390, l: withOverlap },
+    ],
+    "/p",
+  );
+  const overlap = drafts.filter((d) => d.info.id === "overlap");
+  assert.equal(overlap.length, 1);
+  assert.deepEqual(overlap[0].evidence?.viewports, [992, 390]);
+  assert.equal(overlap[0].viewport, 390);
+  assert.equal(overlap[0].key, "overlap|div.kaart > h3|div.kaart > p");
+  const order = drafts.filter((d) => d.info.id === "image-text-order");
+  assert.deepEqual(order.map((d) => d.evidence?.viewports), [[390]], "992 px telt niet als mobiel");
 });
 
 test("authorized: API-sleutel via header of Bearer", () => {

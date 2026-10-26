@@ -29,6 +29,12 @@ export const CHECKS = {
   webflowBadge: { id: "webflow-badge", item: "Remove Webflow Branding", category: "Project Settings", hint: "hoog" },
   lang: { id: "lang", item: "Language Code", category: "Project Settings", hint: "midden" },
   testPage: { id: "test-page", item: "Missing Content", category: "Usability and Design", hint: "midden" },
+  // Lay-out per schermbreedte. "Check on All Devices" vraagt daarnaast dat Claude screenshots bekijkt (get_screenshot).
+  overlap: { id: "overlap", item: "Check on All Devices and Small Laptops", category: "Usability and Design", hint: "hoog" },
+  clippedText: { id: "clipped-text", item: "Check on All Devices and Small Laptops", category: "Usability and Design", hint: "hoog" },
+  textOutside: { id: "text-outside", item: "Check on All Devices and Small Laptops", category: "Usability and Design", hint: "midden" },
+  imageQuality: { id: "image-quality", item: "Blurry Images", category: "Usability and Design", hint: "midden" },
+  imageTextOrder: { id: "image-text-order", item: "Image + Text", category: "Usability and Design", hint: "midden" },
 } as const satisfies Record<string, CheckInfo>;
 
 export interface Finding {
@@ -55,6 +61,8 @@ export interface PageResult {
   status: number | null;
   finalUrl: string;
   error?: string;
+  /** De pagina laadde, maar een controle liep vast; de andere controles van die pagina zijn wel uitgevoerd. */
+  analysisError?: string;
 }
 
 export interface CheckupSummary {
@@ -64,6 +72,8 @@ export interface CheckupSummary {
   byHint: Record<Hint, number>;
   byCheck: Record<string, number>;
   stoppedAtMaxPages: boolean;
+  /** Aantal pagina's waar een controle vastliep (zie pages[].analysisError in list_pages). */
+  analysisErrors?: number;
   /** Live domein van de klant: links ernaartoe zijn op de nieuwe site gecontroleerd. */
   liveDomain?: string;
   /** "opgegeven" via start_checkup, of "sitemap" als het uit sitemap.xml gehaald is. */
