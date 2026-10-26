@@ -27,7 +27,7 @@ after(() => {
 
 test("vindt alle pagina's: via links, via de sitemap, en de kapotte pagina", () => {
   const paths = result.pages.map((p) => p.path).sort();
-  assert.deepEqual(paths, ["/", "/bestaat-niet", "/cms", "/formulier", "/fout", "/over", "/verborgen"]);
+  assert.deepEqual(paths, ["/", "/bestaat-niet", "/cms", "/formulier", "/fout", "/over", "/over-copy", "/verborgen"]);
   assert.equal(result.summary.pagesWithErrors, 1);
   assert.equal(result.summary.stoppedAtMaxPages, false);
 });
@@ -39,17 +39,32 @@ test("h1 en headingstructuur", () => {
   assert.deepEqual(find("heading-structure").map((f) => f.pages[0]), ["/fout"]);
 });
 
-test("alt-teksten: ontbrekend en bestandsnaam, decoratief niet", () => {
+test("alt-teksten: per soort en per onderdeel; decoratief, badge, link met tekst en partnernaam niet", () => {
   const alt = find("image-alt");
-  assert.equal(alt.length, 1);
-  assert.deepEqual(alt[0].pages, ["/fout"]);
-  assert.equal(alt[0].evidence?.missing, 1);
-  assert.equal(alt[0].evidence?.filename, 1);
+  const byProblem = new Map(alt.map((f) => [String(f.evidence?.problem), f]));
+  assert.deepEqual([...byProblem.keys()].sort(), ["empty", "filename", "link", "missing"], alt.map((f) => f.message).join("\n"));
+  assert.equal(alt.length, 4);
+  assert.deepEqual(byProblem.get("missing")?.pages, ["/fout"]);
+  assert.match(String(byProblem.get("filename")?.message), /IMG_1234\.jpg/);
+  // Dezelfde link-afbeelding op twee pagina's is één bevinding.
+  const link = byProblem.get("link")!;
+  assert.deepEqual([...link.pages].sort(), ["/fout", "/over-copy"]);
+  assert.equal(link.hint, "midden");
+  assert.equal(link.label, undefined);
+  assert.match(String(link.element), /icoon-link/);
+  const empty = byProblem.get("empty")!;
+  assert.equal(empty.label, "na te kijken");
+  assert.equal(empty.hint, "laag");
+  assert.equal(empty.evidence?.count, 1, "enkel /sfeer.jpg: de badge en de knop met tekst tellen niet");
 });
 
 test("ontbrekende inhoud: lorem ipsum, standaardteksten en placeholders", () => {
-  const kinds = find("missing-content", "/fout").map((f) => f.message);
-  assert.equal(kinds.length, 4, kinds.join("\n"));
+  const content = find("missing-content", "/fout");
+  const kinds = content.map((f) => f.message);
+  assert.equal(kinds.length, 5, kinds.join("\n"));
+  const upload = content.find((f) => f.message.includes("bestandsnaam"));
+  assert.equal(upload?.label, "na te kijken");
+  assert.match(JSON.stringify(upload?.evidence), /placeholder-p-500\.jpg/);
   assert.ok(kinds.some((m) => m.includes("Lorem ipsum")));
   assert.ok(kinds.some((m) => m.includes("This is some text inside of a div block.")));
   assert.ok(kinds.some((m) => m.includes("\"Heading\"")));
@@ -79,7 +94,15 @@ test("links: kapot intern, kapot extern, na te kijken, en werkende links niet", 
   assert.equal(byUrl.get(`${external.origin}/blocked`)?.label, "na te kijken");
   assert.equal(byUrl.has(`${external.origin}/ok`), false);
   assert.equal(byUrl.has(`${external.origin}/redirect`), false);
-  assert.equal(links.length, 4, links.map((l) => l.message).join("\n"));
+  // Het live domein komt uit de sitemap; links ernaartoe worden op de testsite zelf gecontroleerd.
+  assert.equal(result.summary.liveDomain, "klant.be");
+  assert.equal(result.summary.liveDomainSource, "sitemap");
+  const live = byUrl.get("https://klant.be/oude-pagina");
+  assert.equal(live?.hint, "hoog");
+  assert.equal(live?.evidence?.checkedUrl, `${site.origin}/oude-pagina`);
+  assert.match(String(live?.message), /live domein/);
+  assert.equal(byUrl.has("https://www.klant.be/over"), false);
+  assert.equal(links.length, 5, links.map((l) => l.message).join("\n"));
   const empty = find("empty-links");
   assert.equal(empty.length, 1, "lightbox-link met # telt niet mee");
   assert.deepEqual(empty[0].pages, ["/fout"]);
@@ -102,8 +125,16 @@ test("lege collectie met standaardtekst", () => {
   assert.deepEqual(empty[0].pages, ["/cms"]);
 });
 
+test("testpagina's: kopie herkend aan het adres", () => {
+  const testPages = find("test-page");
+  assert.equal(testPages.length, 1);
+  assert.deepEqual(testPages[0].pages, ["/over-copy"]);
+  assert.equal(testPages[0].label, "na te kijken");
+});
+
 test("instellingen: badge, taalcode, favicon", () => {
   assert.deepEqual(find("webflow-badge")[0]?.pages, ["/fout"]);
+  assert.equal(find("webflow-badge")[0]?.label, undefined, "geen .webflow.io: de badge is een zekere bug");
   assert.deepEqual(find("lang").map((f) => f.pages), [["/formulier"]]);
   const favicon = find("favicon");
   assert.deepEqual(favicon.map((f) => f.message.slice(0, 20)).sort(), ["Geen web clip (apple", "Het Webflow-standaar"]);

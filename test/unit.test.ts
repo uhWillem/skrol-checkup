@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isPrivateIp, matchesDomain, UrlGuard } from "../src/url-guard.js";
-import { normalizePageUrl, readSitemap } from "../src/discover.js";
-import { inputIssues, isFilenameLike, overflowDrafts } from "../src/checks.js";
+import { normalizeDomain, normalizePageUrl, readSitemap } from "../src/discover.js";
+import { componentOf, inputIssues, isFilenameLike, overflowDrafts, pageDrafts, testPageWord } from "../src/checks.js";
+import type { RawPageData } from "../src/page-scripts.js";
 import { authorized } from "../src/server.js";
 
 test("matchesDomain: wildcard en kaal domein", () => {
@@ -40,13 +41,59 @@ test("normalizePageUrl: zonder hash, zoekparameters en slash op het einde", () =
 
 test("readSitemap: paden van het live domein worden op het staging-domein gezet", async () => {
   const xml = "<urlset><url><loc>https://www.klant.be/over</loc></url><url><loc>https://www.klant.be/file.pdf</loc></url></urlset>";
-  const pages = await readSitemap("https://klant.webflow.io", async () => xml);
+  const { pages, hosts } = await readSitemap("https://klant.webflow.io", async () => xml);
   assert.deepEqual(pages, ["https://klant.webflow.io/over"]);
+  assert.deepEqual(hosts, ["www.klant.be"]);
 });
 
 test("isFilenameLike", () => {
-  for (const alt of ["IMG_1234.jpg", "hero-image-2x", "DSC0001", "screenshot 3"]) assert.equal(isFilenameLike(alt), true, alt);
-  for (const alt of ["Team aan het werk in Gent", "Logo", "Skrol logo"]) assert.equal(isFilenameLike(alt), false, alt);
+  for (const alt of ["IMG_1234.jpg", "hero-image-2x", "DSC0001", "DSC00028 (1)-min", "screenshot 3", "PXL_20240101_120000", "image", "Foto 2", "untitled"]) {
+    assert.equal(isFilenameLike(alt), true, alt);
+  }
+  for (const alt of ["Team aan het werk in Gent", "Logo", "Skrol logo", "PXL", "IMG Studio", "Covid-19", "Leen Stulens"]) {
+    assert.equal(isFilenameLike(alt), false, alt);
+  }
+});
+
+test("testPageWord: test- en kopiepagina's, geen woorden die er toevallig op lijken", () => {
+  assert.equal(testPageWord("/partners-realisaties/test-realisatie-02"), "test");
+  assert.equal(testPageWord("/evenementen-events/extra-event-test"), "test");
+  assert.equal(testPageWord("/over-copy"), "copy");
+  assert.equal(testPageWord("/test2"), "test");
+  for (const path of ["/", "/blog/testimonials", "/contest", "/diensten/copywriting"]) assert.equal(testPageWord(path), null, path);
+});
+
+test("componentOf: selector zonder volgnummers", () => {
+  assert.equal(componentOf("div.list > div.item:nth-of-type(3) > a.logo > img"), "div.list > div.item > a.logo > img");
+});
+
+test("normalizeDomain: kaal domein uit URL of hostnaam", () => {
+  assert.equal(normalizeDomain("https://www.In4care.be/zorgvinding"), "in4care.be");
+  assert.equal(normalizeDomain("klant.be"), "klant.be");
+  assert.equal(normalizeDomain("www.klant.be."), "klant.be");
+  for (const bad of ["", "geen domein", "localhost"]) assert.equal(normalizeDomain(bad), null, bad);
+});
+
+test("badge: op .webflow.io na te kijken, op een eigen domein een zekere bug", () => {
+  const data: RawPageData = {
+    title: "T",
+    lang: "nl",
+    headings: [{ level: 1, text: "T", visible: true, selector: "h1" }],
+    images: [],
+    textHits: [],
+    forms: [],
+    emptyStates: [],
+    icons: ["/favicon.png"],
+    touchIcons: ["/webclip.png"],
+    hasBadge: true,
+    links: [],
+  };
+  const staging = pageDrafts(data, "/", { onWebflowIo: true });
+  const live = pageDrafts(data, "/", { onWebflowIo: false });
+  assert.equal(staging.length, 1);
+  assert.equal(staging[0].label, "na te kijken");
+  assert.equal(live.length, 1);
+  assert.equal(live[0].label, undefined);
 });
 
 test("inputIssues: standaardnaam en verkeerd type", () => {

@@ -28,6 +28,7 @@ export const CHECKS = {
   favicon: { id: "favicon", item: "Favicon and Web Clip", category: "Project Settings", hint: "midden" },
   webflowBadge: { id: "webflow-badge", item: "Remove Webflow Branding", category: "Project Settings", hint: "hoog" },
   lang: { id: "lang", item: "Language Code", category: "Project Settings", hint: "midden" },
+  testPage: { id: "test-page", item: "Missing Content", category: "Usability and Design", hint: "midden" },
 } as const satisfies Record<string, CheckInfo>;
 
 export interface Finding {
@@ -63,6 +64,10 @@ export interface CheckupSummary {
   byHint: Record<Hint, number>;
   byCheck: Record<string, number>;
   stoppedAtMaxPages: boolean;
+  /** Live domein van de klant: links ernaartoe zijn op de nieuwe site gecontroleerd. */
+  liveDomain?: string;
+  /** "opgegeven" via start_checkup, of "sitemap" als het uit sitemap.xml gehaald is. */
+  liveDomainSource?: "opgegeven" | "sitemap";
 }
 
 export type JobStatus = "queued" | "running" | "done" | "failed";
@@ -70,6 +75,7 @@ export type JobStatus = "queued" | "running" | "done" | "failed";
 export interface Job {
   id: string;
   url: string;
+  liveDomain?: string;
   status: JobStatus;
   createdAt: string;
   startedAt?: string;

@@ -2,17 +2,22 @@ import { createHash } from "node:crypto";
 import type { Page } from "playwright";
 import type { Config } from "./config.js";
 import { guardedContext, launchChromium } from "./browser.js";
-import { isLikelyHtml, normalizeLinkUrl, normalizePageUrl, pathOf, readSitemap } from "./discover.js";
+import { isLikelyHtml, normalizeDomain, normalizeLinkUrl, normalizePageUrl, pathOf, readSitemap } from "./discover.js";
 import { checkLink, fetchWithGuard, mapLimit, type LinkStatus } from "./links.js";
 import { overflowDrafts, pageDrafts, type Draft } from "./checks.js";
 import { COLLECT_PAGE_DATA, MEASURE_OVERFLOW, type RawLink, type RawOverflow, type RawPageData } from "./page-scripts.js";
 import { CHECKS, type CheckupSummary, type Finding, type Hint, type PageResult } from "./types.js";
-import type { UrlGuard } from "./url-guard.js";
+import { matchesDomain, type UrlGuard } from "./url-guard.js";
 
 export interface Progress {
   pagesDone: number;
   pagesFound: number;
   phase: string;
+}
+
+export interface CheckupOptions {
+  /** Live domein van de klant, bv. "klant.be". Leeg = uit sitemap.xml halen als dat kan. */
+  liveDomain?: string;
 }
 
 export interface CheckupResult {
@@ -73,6 +78,7 @@ export async function runCheckup(
   config: Config,
   guard: UrlGuard,
   onProgress: (p: Progress) => void = () => undefined,
+  options: CheckupOptions = {},
 ): Promise<CheckupResult> {
   const startUrl = normalizePageUrl(startInput);
   if (!startUrl) throw new Error(`Ongeldige URL: ${startInput}`);
@@ -81,6 +87,8 @@ export async function runCheckup(
   }
   if (await guard.resolvesToPrivate(new URL(startUrl).hostname)) throw new Error("Intern adres geblokkeerd.");
   const origin = new URL(startUrl).origin;
+  const startHost = new URL(startUrl).hostname;
+  const onWebflowIo = matchesDomain(startHost, ["*.webflow.io"]);
 
   const findings = new FindingSet();
   const pages: PageResult[] = [];
@@ -97,9 +105,27 @@ export async function runCheckup(
     }
   });
 
+  // Live domein: opgegeven, of het domein uit de sitemap als dat niet de staging-site zelf is.
+  let liveDomain: string | undefined;
+  let liveDomainSource: CheckupSummary["liveDomainSource"];
+  if (options.liveDomain) {
+    const given = normalizeDomain(options.liveDomain);
+    if (!given) throw new Error(`Ongeldig live domein: ${options.liveDomain}`);
+    liveDomain = given;
+    liveDomainSource = "opgegeven";
+  } else {
+    const fromSitemap = sitemap.hosts
+      .map(normalizeDomain)
+      .find((h): h is string => !!h && !matchesDomain(startHost, [h]) && !matchesDomain(h, ["*.webflow.io"]));
+    if (fromSitemap) {
+      liveDomain = fromSitemap;
+      liveDomainSource = "sitemap";
+    }
+  }
+
   const queue: string[] = [startUrl];
   const seen = new Set<string>([startUrl]);
-  for (const url of sitemap) {
+  for (const url of sitemap.pages) {
     if (!seen.has(url)) {
       seen.add(url);
       queue.push(url);
@@ -134,7 +160,7 @@ export async function runCheckup(
         await settle(page);
 
         const data = (await page.evaluate(COLLECT_PAGE_DATA)) as RawPageData;
-        for (const draft of pageDrafts(data, path)) findings.add(draft, path);
+        for (const draft of pageDrafts(data, path, { onWebflowIo })) findings.add(draft, path);
 
         const measurements: Array<{ width: number; m: RawOverflow }> = [];
         for (const viewport of config.viewports) {
@@ -192,7 +218,7 @@ export async function runCheckup(
   }
 
   onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "links controleren" });
-  await checkAllLinks(occurrences, origin, pageStatus, config, guard, findings);
+  await checkAllLinks(occurrences, origin, liveDomain, pageStatus, config, guard, findings);
 
   const list = findings.list();
   const summary: CheckupSummary = {
@@ -202,6 +228,7 @@ export async function runCheckup(
     byHint: { hoog: 0, midden: 0, laag: 0 },
     byCheck: {},
     stoppedAtMaxPages,
+    ...(liveDomain ? { liveDomain, liveDomainSource } : {}),
   };
   for (const f of list) {
     summary.byHint[f.hint]++;
@@ -211,15 +238,20 @@ export async function runCheckup(
   return { startUrl, pages, findings: list, summary };
 }
 
+type LinkKind = "internal" | "live" | "external";
+
 async function checkAllLinks(
   occurrences: LinkOccurrence[],
   origin: string,
+  liveDomain: string | undefined,
   pageStatus: Map<string, number | null>,
   config: Config,
   guard: UrlGuard,
   findings: FindingSet,
 ): Promise<void> {
-  const targets = new Map<string, { internal: boolean; pages: Set<string>; texts: Set<string> }>();
+  // checkUrl: wat er echt opgevraagd wordt. Een link naar het live domein wordt op de nieuwe site gecontroleerd,
+  // want na de lancering draait die site op dat domein.
+  const targets = new Map<string, { kind: LinkKind; checkUrl: string; pages: Set<string>; texts: Set<string> }>();
 
   for (const { link, page } of occurrences) {
     const raw = link.raw.trim();
@@ -240,8 +272,15 @@ async function checkAllLinks(
     if (/^(mailto|tel|sms):/i.test(raw) || raw.startsWith("#")) continue;
     const url = normalizeLinkUrl(link.href);
     if (!url) continue;
-    const internal = new URL(url).origin === origin;
-    const entry = targets.get(url) ?? { internal, pages: new Set<string>(), texts: new Set<string>() };
+    const u = new URL(url);
+    let kind: LinkKind = "external";
+    let checkUrl = url;
+    if (u.origin === origin) kind = "internal";
+    else if (liveDomain && matchesDomain(u.hostname, [liveDomain])) {
+      kind = "live";
+      checkUrl = new URL(u.pathname + u.search, origin).toString();
+    }
+    const entry = targets.get(url) ?? { kind, checkUrl, pages: new Set<string>(), texts: new Set<string>() };
     entry.pages.add(page);
     if (link.text) entry.texts.add(link.text);
     targets.set(url, entry);
@@ -250,30 +289,41 @@ async function checkAllLinks(
   const urls = [...targets.keys()];
   const results = await mapLimit(urls, config.linkConcurrency, async (url): Promise<LinkStatus> => {
     const entry = targets.get(url)!;
-    if (entry.internal) {
-      const asPage = normalizePageUrl(url);
+    if (entry.kind !== "external") {
+      const asPage = normalizePageUrl(entry.checkUrl);
       const known = asPage ? pageStatus.get(asPage) : undefined;
       if (typeof known === "number") {
-        return { url, verdict: known >= 400 ? "broken" : "ok", status: known, finalUrl: url, reason: known >= 400 ? `HTTP ${known}` : undefined };
+        return { url, verdict: known >= 400 ? "broken" : "ok", status: known, finalUrl: entry.checkUrl, reason: known >= 400 ? `HTTP ${known}` : undefined };
       }
     }
-    return checkLink(url, config, guard);
+    const status = await checkLink(entry.checkUrl, config, guard);
+    return { ...status, url };
   });
 
   for (const result of results) {
     if (result.verdict === "ok") continue;
     const entry = targets.get(result.url)!;
-    const shown = entry.internal ? pathOf(result.url) : result.url;
+    const shown = entry.kind === "internal" ? pathOf(result.url) : result.url;
+    const review = result.verdict === "review";
+    let message: string;
+    if (review) message = `Link naar ${shown} kon niet zeker gecontroleerd worden (${result.reason}).`;
+    else if (entry.kind === "live") {
+      message = `Link naar het live domein (${result.url}) werkt niet na de lancering: ${pathOf(entry.checkUrl)} bestaat niet op de nieuwe site (${result.reason}).`;
+    } else message = `${entry.kind === "internal" ? "Interne" : "Externe"} link naar ${shown} werkt niet (${result.reason}).`;
     const draft: Draft = {
       info: CHECKS.brokenLinks,
       key: result.url,
-      hint: result.verdict === "review" ? "laag" : entry.internal ? "hoog" : "midden",
-      label: result.verdict === "review" ? "na te kijken" : undefined,
-      message:
-        result.verdict === "review"
-          ? `Link naar ${shown} kon niet zeker gecontroleerd worden (${result.reason}).`
-          : `${entry.internal ? "Interne" : "Externe"} link naar ${shown} werkt niet (${result.reason}).`,
-      evidence: { url: result.url, status: result.status, reason: result.reason, finalUrl: result.finalUrl, linkTexts: [...entry.texts].slice(0, 5) },
+      hint: review ? "laag" : entry.kind === "external" ? "midden" : "hoog",
+      label: review ? "na te kijken" : undefined,
+      message,
+      evidence: {
+        url: result.url,
+        ...(entry.kind === "live" ? { checkedUrl: entry.checkUrl } : {}),
+        status: result.status,
+        reason: result.reason,
+        finalUrl: result.finalUrl,
+        linkTexts: [...entry.texts].slice(0, 5),
+      },
     };
     for (const page of entry.pages) findings.add(draft, page);
   }

@@ -4,8 +4,9 @@ import type { Config } from "./config.js";
 import type { JobStore } from "./jobs.js";
 import { CHECKS, type Finding } from "./types.js";
 import type { UrlGuard } from "./url-guard.js";
+import { normalizeDomain } from "./discover.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 const MAX_PAGES_SHOWN = 20;
 
 /** Welke checklist-punten deze versie automatisch controleert. */
@@ -37,15 +38,28 @@ export function createMcpServer(store: JobStore, config: Config, guard: UrlGuard
         "Start een check-up van een Webflow-site als achtergrondtaak en geeft een job-ID terug. " +
         "Geef de staging-URL (bv. https://klant.webflow.io). De tool crawlt alle pagina's van de site, " +
         "controleert ze in Chromium op meerdere schermbreedtes en test alle links. " +
+        "Geef live_domain mee als je het live domein van de klant kent: links naar dat domein worden dan op de nieuwe site gecontroleerd. " +
+        "Zonder live_domain haalt de tool het uit sitemap.xml als dat kan. " +
         "Volg de voortgang op met get_checkup_status.",
-      inputSchema: { url: z.string().url().describe("Start-URL van de site, meestal de staging-URL op .webflow.io") },
+      inputSchema: {
+        url: z.string().url().describe("Start-URL van de site, meestal de staging-URL op .webflow.io"),
+        live_domain: z
+          .string()
+          .optional()
+          .describe("Live domein van de klant, bv. klant.be. Links naar dit domein tellen als interne links van de nieuwe site."),
+      },
       annotations: { readOnlyHint: true, openWorldHint: true, idempotentHint: false },
     },
-    async ({ url }) => {
+    async ({ url, live_domain }) => {
       if (!guard.isAllowedPage(url)) {
         return fail(`Domein niet toegestaan: ${new URL(url).hostname}. Toegestaan: ${config.allowedDomains.join(", ")}.`);
       }
-      const job = await store.start(url);
+      let liveDomain: string | undefined;
+      if (live_domain) {
+        liveDomain = normalizeDomain(live_domain) ?? undefined;
+        if (!liveDomain) return fail(`Ongeldig live domein: ${live_domain}. Gebruik bv. klant.be.`);
+      }
+      const job = await store.start(url, { liveDomain });
       return json({ job_id: job.id, status: job.status, message: "Check-up gestart. Vraag de status op met get_checkup_status." });
     },
   );

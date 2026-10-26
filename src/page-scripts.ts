@@ -11,13 +11,20 @@ export interface RawHeading {
 export interface RawImage {
   src: string;
   alt: string | null;
+  /** Decoratief gemarkeerd, of deel van de Webflow-badge of een kaartwidget: telt niet mee voor alt-teksten. */
   decorative: boolean;
   visible: boolean;
+  /**
+   * "empty": in een link of knop zonder andere tekst, aria-label of title;
+   * "named": in een link of knop die al een naam heeft (dan is een lege alt juist goed);
+   * "none": niet in een link of knop.
+   */
+  inLink: "none" | "empty" | "named";
   selector: string;
 }
 
 export interface RawTextHit {
-  kind: "lorem" | "default-div" | "default-heading" | "placeholder-image";
+  kind: "lorem" | "default-div" | "default-heading" | "placeholder-image" | "placeholder-upload";
   text: string;
   visible: boolean;
   selector: string;
@@ -111,13 +118,31 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
     selector: selectorOf(h),
   }));
 
-  const images = [...document.querySelectorAll("img")].map((img) => ({
-    src: img.currentSrc || img.getAttribute("src") || "",
-    alt: img.hasAttribute("alt") ? img.getAttribute("alt") : null,
-    decorative: img.getAttribute("role") === "presentation" || img.getAttribute("aria-hidden") === "true" || !!img.closest("[aria-hidden='true']"),
-    visible: isVisible(img),
-    selector: selectorOf(img),
-  }));
+  // Heeft een link of knop een naam voor schermlezers, buiten deze afbeelding?
+  const hasOtherName = (link, img) => {
+    if (clean(link.getAttribute("aria-label")) || clean(link.getAttribute("title"))) return true;
+    const labelledBy = link.getAttribute("aria-labelledby");
+    if (labelledBy && labelledBy.split(/\s+/).some((id) => { const el = document.getElementById(id); return el && clean(el.textContent); })) return true;
+    if (clean(link.textContent)) return true;
+    if ([...link.querySelectorAll("img")].some((other) => other !== img && clean(other.getAttribute("alt")))) return true;
+    return [...link.querySelectorAll("[aria-label]")].some((el) => clean(el.getAttribute("aria-label")));
+  };
+  const images = [...document.querySelectorAll("img")].map((img) => {
+    const link = img.closest("a[href], button");
+    return {
+      src: img.getAttribute("src") || img.currentSrc || "",
+      alt: img.hasAttribute("alt") ? img.getAttribute("alt") : null,
+      decorative:
+        img.getAttribute("role") === "presentation" ||
+        img.getAttribute("aria-hidden") === "true" ||
+        !!img.closest("[aria-hidden='true']") ||
+        !!img.closest(".w-webflow-badge") ||
+        img.classList.contains("leaflet-tile"),
+      visible: isVisible(img),
+      inLink: !link ? "none" : hasOtherName(link, img) ? "named" : "empty",
+      selector: selectorOf(img),
+    };
+  });
 
   const textHits = [];
   const leafish = [...document.body.querySelectorAll("p, span, div, h1, h2, h3, h4, h5, h6, li, a, label, blockquote, figcaption, td, th, strong, em")];
@@ -129,9 +154,18 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
     else if (text === "This is some text inside of a div block.") textHits.push({ kind: "default-div", text, visible: isVisible(el), selector: selectorOf(el) });
     else if (/^H[1-6]$/.test(el.tagName) && text === "Heading") textHits.push({ kind: "default-heading", text, visible: isVisible(el), selector: selectorOf(el) });
   }
+  const fileName = (url) => {
+    try { return decodeURIComponent(new URL(url, location.href).pathname.split("/").pop() || ""); } catch { return ""; }
+  };
   for (const img of document.querySelectorAll("img")) {
     const src = img.getAttribute("src") || "";
-    if (/placeholder\.[0-9a-f]+\.svg/i.test(src)) textHits.push({ kind: "placeholder-image", text: src.slice(-60), visible: isVisible(img), selector: selectorOf(img) });
+    if (/placeholder\.[0-9a-f]+\.svg/i.test(src)) {
+      textHits.push({ kind: "placeholder-image", text: src.slice(-60), visible: isVisible(img), selector: selectorOf(img) });
+      continue;
+    }
+    // Zelf geüploade placeholders, bv. 6adb..._placeholder-p-500.jpg
+    const name = [src, img.currentSrc || ""].map(fileName).find((n) => /(^|[_\-.\s])(placeholder|dummy)([_\-.\s]|$)/i.test(n));
+    if (name) textHits.push({ kind: "placeholder-upload", text: name.slice(-60), visible: isVisible(img), selector: selectorOf(img) });
   }
 
   const labelFor = (input) => {

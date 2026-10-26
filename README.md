@@ -2,13 +2,13 @@
 
 MCP-server voor de Webflow check-up bot van Skrol. De server crawlt een site in een headless Chromium, voert vaste controles uit uit de pre-launch checklist, en geeft de bevindingen aan Claude. Er zit geen AI in de server: dezelfde site geeft elke keer dezelfde bevindingen. Claude beoordeelt en schrijft het rapport.
 
-Zie het technisch plan voor de volledige architectuur. Dit is de eerste versie (dag 1).
+Zie het technisch plan voor de volledige architectuur. Dit is versie 0.2: de eerste versie, bijgestuurd na de eerste echte check-up (in4care).
 
 ## Tools
 
 | Tool | Wat ze doet |
 | --- | --- |
-| `start_checkup` | Start een check-up voor een URL als achtergrondtaak en geeft een job-ID terug. |
+| `start_checkup` | Start een check-up voor een URL als achtergrondtaak en geeft een job-ID terug. Optioneel `live_domain` (bv. `klant.be`): zie "Live domein" hieronder. |
 | `get_checkup_status` | Status en voortgang; als de job klaar is, een samenvatting en de lijst gecontroleerde checklist-punten. |
 | `get_findings` | Bevindingen, gesorteerd op prioriteit, te filteren op controle, pagina of prioriteit, per 100. |
 
@@ -16,21 +16,28 @@ Zie het technisch plan voor de volledige architectuur. Dit is de eerste versie (
 
 | Controle | Checklist-punt | Prioriteit |
 | --- | --- | --- |
-| `broken-links` | Linking Pages: interne links (hoog) en externe links (midden) met HTTP 4xx/5xx, time-out of onbestaand domein. Sites die bots weren (401, 403, 429, 999) krijgen "na te kijken". | hoog / midden |
+| `broken-links` | Linking Pages: interne links (hoog) en externe links (midden) met HTTP 4xx/5xx, time-out of onbestaand domein. Links naar het live domein worden op de nieuwe site gecontroleerd (hoog). Sites die bots weren (401, 403, 429, 999) krijgen "na te kijken". | hoog / midden |
 | `empty-links` | Linking Pages: links met `href=""`, `"#"` of `javascript:`. Lightbox-, dropdown- en tablinks tellen niet mee. | midden |
 | `heading-1` | Heading 1: geen of meer dan één h1. | hoog |
 | `heading-structure` | Heading Structure: overgeslagen niveaus. | laag |
 | `horizontal-scroll` | Horizontal Scroll: de pagina scrolt horizontaal op een van de viewports. Overloop die verborgen wordt door overflow op html of body: "na te kijken". | hoog |
-| `image-alt` | Image Alt Texts: geen alt-attribuut of een bestandsnaam als alt. Lege alt op zichtbare afbeeldingen: "na te kijken". | midden |
-| `missing-content` | Missing Content: lorem ipsum, Webflow-standaardteksten, placeholderafbeeldingen. | hoog |
+| `image-alt` | Image Alt Texts: geen alt-attribuut, een bestandsnaam als alt, of een link met enkel een afbeelding zonder alt (de link heeft dan geen naam). Lege alt op andere zichtbare afbeeldingen: "na te kijken". Eén bevinding per soort afbeelding (bv. het logo in de navigatie), met alle pagina's. | midden / laag |
+| `missing-content` | Missing Content: lorem ipsum, Webflow-standaardteksten, de placeholderafbeelding van Webflow. Geüploade afbeeldingen met "placeholder" of "dummy" in de bestandsnaam: "na te kijken". | hoog |
+| `test-page` | Missing Content: pagina's met test, copy, kopie, dummy of untitled in het adres, bv. testitems uit het CMS of een vergeten kopie. Altijd "na te kijken". | midden |
 | `form-success-message` | Form Success Message: standaardtekst van Webflow. | hoog |
 | `form-error-message` | Form Error Message: standaardtekst van Webflow. | hoog |
 | `form-name` | Form Settings: formulier heet "Email Form" of heeft geen naam. | midden |
 | `form-inputs` | Input Settings: standaardnamen (Field, Field 2) en e-mail- of telefoonvelden met het verkeerde type. | midden |
 | `empty-state` | Empty CMS List State: standaardtekst "No items found.". | midden |
 | `favicon` | Favicon and Web Clip: ontbrekend of het Webflow-standaardicoon. | midden / laag |
-| `webflow-badge` | Remove Webflow Branding: de badge staat op de pagina. | hoog |
+| `webflow-badge` | Remove Webflow Branding: de badge staat op de pagina. Op een .webflow.io-domein "na te kijken": zonder betaald site plan toont Webflow de badge daar altijd. | hoog |
 | `lang` | Language Code: geen of een ongeldig lang-attribuut. | midden |
+
+Afbeeldingen in de Webflow-badge en kaarttegels tellen niet mee voor alt-teksten, net als een lege alt in een link die al tekst heeft (bv. een pijltje naast "Lees meer").
+
+### Live domein
+
+Op staging verwijzen oude links vaak nog naar het live domein van de klant (bv. `https://www.klant.be/oude-pagina`). Na de lancering draait de nieuwe site op dat domein, dus de tool controleert zo'n link op de nieuwe site: bestaat `/oude-pagina` daar niet, dan is het een kapotte interne link (hoog). Het live domein komt uit `live_domain` bij `start_checkup`, of anders uit `sitemap.xml` als Webflow daar het live domein in zet. De samenvatting toont welk domein gebruikt is (`liveDomain`, `liveDomainSource`).
 
 Elke pagina wordt in Chromium geladen op 1440 px en daarna verkleind naar 1280, 992, 768, 390 en 360 px voor de scrollcontrole. Bevindingen die op meerdere pagina's voorkomen (bv. een favicon of een formulier in de footer) worden samengevoegd tot één bevinding met alle pagina's.
 
@@ -39,7 +46,7 @@ Elke pagina wordt in Chromium geladen op 1440 px en daarna verkleind naar 1280, 
 ```bash
 npm install
 npm test                      # unit-, integratie- en MCP-tests op een testsite met geplante bugs
-npm run checkup -- https://klant.webflow.io   # check-up vanaf de commandolijn
+npm run checkup -- https://klant.webflow.io --live=klant.be   # check-up vanaf de commandolijn
 npm run dev                   # MCP-server op http://localhost:8080/mcp
 ```
 

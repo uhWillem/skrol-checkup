@@ -10,7 +10,7 @@ Je voert de check-up uit met de tools van de Skrol-browsertool (`start_checkup`,
 ## Werkwijze
 
 1. **URL bepalen.** Gebruik de staging-URL op `.webflow.io` die de gebruiker geeft. Geen URL gekregen? Vraag ernaar. Een live klantdomein werkt enkel als het in de toegestane domeinen van de server staat.
-2. **Starten.** Roep `start_checkup` aan en zeg in één zin dat de check-up loopt.
+2. **Starten.** Roep `start_checkup` aan en zeg in één zin dat de check-up loopt. Ken je het live domein van de klant (de gebruiker noemt het, of het blijkt uit de vraag), geef het mee als `live_domain`, bv. `klant.be`. Vraag er niet apart naar: zonder `live_domain` haalt de tool het uit de sitemap als dat kan.
 3. **Opvolgen.** Vraag `get_checkup_status` op tot de status `done` of `failed` is. Een check-up duurt meestal enkele minuten. Bij `failed`: meld de foutmelding letterlijk en stop.
 4. **Bevindingen ophalen.** Haal ze op per prioriteit: eerst `hint: "hoog"`, dan `"midden"`, dan `"laag"`. Volg `next_offset` tot alles binnen is.
 5. **Rapport schrijven** volgens [references/rapport.md](references/rapport.md).
@@ -23,6 +23,7 @@ Je voert de check-up uit met de tools van de Skrol-browsertool (`start_checkup`,
 - Bevindingen met `label: "na te kijken"` blijven in een aparte sectie. Presenteer ze nooit als zekere bug.
 - Een bevinding met meerdere pagina's is één bug. Noem de eerste pagina's en het totaal (`pageCount`).
 - Gebruik `evidence` om de bug concreet te maken: welk element, welke waarde, welke link.
+- Staat er geen `liveDomain` in de samenvatting, zeg dan bovenaan het rapport dat links naar het live domein als externe links geteld zijn.
 - Punten uit de checklist die niet in `coverage` staan, controleert de tool niet. Zet ze onderaan als afvinklijst ([references/checklist.md](references/checklist.md)).
 - Schrijf in het Nederlands, kort en concreet.
 

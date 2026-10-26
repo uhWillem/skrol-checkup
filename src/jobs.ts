@@ -53,11 +53,12 @@ export class JobStore {
     return this.jobs.get(id);
   }
 
-  async start(url: string): Promise<Job> {
+  async start(url: string, options: { liveDomain?: string } = {}): Promise<Job> {
     const id = `job_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_${randomBytes(4).toString("hex")}`;
     const job: Job = {
       id,
       url,
+      ...(options.liveDomain ? { liveDomain: options.liveDomain } : {}),
       status: "queued",
       createdAt: new Date().toISOString(),
       progress: { pagesDone: 0, pagesFound: 0, phase: "in de wachtrij" },
@@ -93,7 +94,7 @@ export class JobStore {
           lastSave = Date.now();
           void this.save(job);
         }
-      });
+      }, { liveDomain: job.liveDomain });
       await writeFile(join(this.dir(id), "result.json"), JSON.stringify(result, null, 2));
       this.results.set(id, result);
       job.status = "done";

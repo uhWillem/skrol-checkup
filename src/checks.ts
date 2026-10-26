@@ -23,10 +23,30 @@ function short(url: string, max = 90): string {
 export function isFilenameLike(alt: string): boolean {
   const a = alt.trim();
   return (
-    /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(a) ||
-    /^(img|image|dsc|dscn|pxl|photo|foto|screenshot|untitled|unnamed)[-_ ]?\d*/i.test(a) ||
+    // eindigt op een extensie: "team.jpg"
+    /\.(jpe?g|png|webp|gif|svg|avif|heic)$/i.test(a) ||
+    // camera- en schermafbeeldingsnamen met een nummer: "IMG_1234", "DSC00028", "PXL_20240101_120000"
+    /^(img|dsc|dscn|dscf|pxl|mvimg|vid|screenshot|schermafbeelding)[-_ ]?\d{2,}/i.test(a) ||
+    // enkel een algemeen woord, eventueel met een nummer: "image", "foto 3", "untitled"
+    /^(image|img|photo|foto|afbeelding|picture|untitled|unnamed|screenshot)([-_ ]?\d+)?$/i.test(a) ||
+    // slug van minstens drie delen zonder spaties: "hero-image-2x"
     /^[a-z0-9]+([-_][a-z0-9]+){2,}$/i.test(a)
   );
+}
+
+/** Woord in het pad dat wijst op een test- of kopiepagina, of null. */
+export function testPageWord(path: string): string | null {
+  for (const segment of path.toLowerCase().split("/")) {
+    for (const token of segment.split(/[-_.]+/)) {
+      if (/^(test|tests|testing|dummy|copy|kopie|untitled|lorem)\d*$/.test(token)) return token.replace(/\d+$/, "");
+    }
+  }
+  return null;
+}
+
+/** Selector zonder volgnummers, zodat dezelfde soort afbeelding op elke pagina dezelfde sleutel krijgt. */
+export function componentOf(selector: string): string {
+  return selector.replace(/:nth-of-type\(\d+\)/g, "");
 }
 
 function headingChecks(data: RawPageData, page: string): Draft[] {
@@ -58,37 +78,45 @@ function headingChecks(data: RawPageData, page: string): Draft[] {
   return drafts;
 }
 
-function imageChecks(data: RawPageData, page: string): Draft[] {
-  const drafts: Draft[] = [];
-  const relevant = data.images.filter((img) => !img.decorative);
-  const missing = relevant.filter((img) => img.alt === null);
-  const filename = relevant.filter((img) => img.alt !== null && img.alt.trim() !== "" && isFilenameLike(img.alt));
-  const empty = relevant.filter((img) => img.alt !== null && img.alt.trim() === "" && img.visible);
-  const list = (imgs: typeof relevant) => imgs.slice(0, 10).map((i) => ({ src: short(i.src), alt: i.alt, selector: i.selector }));
-  if (missing.length + filename.length > 0) {
-    const parts = [];
-    if (missing.length) parts.push(`${missing.length} zonder alt-attribuut`);
-    if (filename.length) parts.push(`${filename.length} met een bestandsnaam als alt-tekst`);
-    drafts.push({
-      info: CHECKS.imageAlt,
-      key: `${page}|alt`,
-      message: `Afbeeldingen zonder bruikbare alt-tekst: ${parts.join(", ")}.`,
-      element: (missing[0] ?? filename[0]).selector,
-      evidence: { missing: missing.length, filename: filename.length, images: list([...missing, ...filename]) },
-    });
+type AltProblem = "missing" | "filename" | "link" | "empty";
+
+const ALT_MESSAGES: Record<AltProblem, (n: number, alt: string | null) => string> = {
+  missing: (n) => `${n > 1 ? `${n} afbeeldingen` : "Afbeelding"} zonder alt-attribuut.`,
+  filename: (n, alt) => `Bestandsnaam als alt-tekst, bv. "${alt}"${n > 1 ? ` (${n}×)` : ""}.`,
+  link: (n) => `Link met enkel een afbeelding zonder alt-tekst${n > 1 ? ` (${n}×)` : ""}: de link heeft geen naam voor schermlezers.`,
+  empty: (n) => `${n > 1 ? `${n} zichtbare afbeeldingen` : "Zichtbare afbeelding"} met een lege alt-tekst. Dat is enkel ok als ze decoratief zijn.`,
+};
+
+/**
+ * Eén bevinding per soort probleem en per onderdeel (selector zonder volgnummers).
+ * Zo wordt het logo in de navigatie één bevinding met alle pagina's, in plaats van één per pagina.
+ */
+function imageChecks(data: RawPageData): Draft[] {
+  const groups = new Map<string, { problem: AltProblem; component: string; images: RawPageData["images"] }>();
+  for (const img of data.images) {
+    if (img.decorative) continue;
+    const alt = img.alt?.trim();
+    let problem: AltProblem | null = null;
+    if (img.alt === null) problem = "missing";
+    else if (alt && isFilenameLike(alt)) problem = "filename";
+    // Een lege alt in een link die al tekst heeft (bv. een pijltje naast "Lees meer") is correct.
+    else if (!alt && img.visible && img.inLink !== "named") problem = img.inLink === "empty" ? "link" : "empty";
+    if (!problem) continue;
+    const component = componentOf(img.selector);
+    const key = `${problem}|${component}`;
+    const group = groups.get(key) ?? { problem, component, images: [] };
+    group.images.push(img);
+    groups.set(key, group);
   }
-  if (empty.length > 0) {
-    drafts.push({
-      info: CHECKS.imageAlt,
-      key: `${page}|empty-alt`,
-      hint: "laag",
-      label: "na te kijken",
-      message: `${empty.length} zichtbare afbeelding(en) met een lege alt-tekst. Dat is enkel ok als ze decoratief zijn.`,
-      element: empty[0].selector,
-      evidence: { empty: empty.length, images: list(empty) },
-    });
-  }
-  return drafts;
+  return [...groups.entries()].map(([key, { problem, images }]) => ({
+    info: CHECKS.imageAlt,
+    key,
+    hint: problem === "empty" ? "laag" : undefined,
+    label: problem === "empty" ? "na te kijken" : undefined,
+    message: ALT_MESSAGES[problem](images.length, images[0].alt),
+    element: images[0].selector,
+    evidence: { problem, count: images.length, images: images.slice(0, 5).map((i) => ({ src: short(i.src), alt: i.alt, selector: i.selector })) },
+  }));
 }
 
 const CONTENT_MESSAGES: Record<string, string> = {
@@ -96,6 +124,7 @@ const CONTENT_MESSAGES: Record<string, string> = {
   "default-div": "Webflow-standaardtekst \"This is some text inside of a div block.\"",
   "default-heading": "Heading met de standaardtekst \"Heading\".",
   "placeholder-image": "Webflow-placeholderafbeelding in plaats van een echte afbeelding.",
+  "placeholder-upload": "Afbeelding met \"placeholder\" of \"dummy\" in de bestandsnaam.",
 };
 
 function contentChecks(data: RawPageData, page: string): Draft[] {
@@ -103,10 +132,12 @@ function contentChecks(data: RawPageData, page: string): Draft[] {
   for (const hit of data.textHits) byKind.set(hit.kind, [...(byKind.get(hit.kind) ?? []), hit]);
   return [...byKind.entries()].map(([kind, hits]) => {
     const anyVisible = hits.some((h) => h.visible);
+    // Een geüploade placeholder herkennen we enkel aan de bestandsnaam: altijd nakijken.
+    const unsure = !anyVisible || kind === "placeholder-upload";
     return {
       info: CHECKS.missingContent,
       key: `${page}|${kind}`,
-      label: anyVisible ? undefined : "na te kijken",
+      label: unsure ? "na te kijken" : undefined,
       message: `${CONTENT_MESSAGES[kind]} (${hits.length}×${anyVisible ? "" : ", niet zichtbaar"})`,
       element: hits[0].selector,
       evidence: { count: hits.length, hits: hits.slice(0, 10) },
@@ -161,20 +192,51 @@ function formChecks(data: RawPageData): Draft[] {
   return drafts;
 }
 
-function settingsChecks(data: RawPageData): Draft[] {
+export interface PageContext {
+  /** De check-up draait op een .webflow.io-domein (staging). */
+  onWebflowIo: boolean;
+}
+
+function settingsChecks(data: RawPageData, ctx: PageContext): Draft[] {
   const drafts: Draft[] = [];
   if (data.icons.length === 0) drafts.push({ info: CHECKS.favicon, key: "favicon-missing", message: "Geen favicon ingesteld." });
   else if (data.icons.some((u) => DEFAULT_ICON.test(u))) drafts.push({ info: CHECKS.favicon, key: "favicon-default", message: "Het Webflow-standaardfavicon wordt gebruikt.", evidence: { icons: data.icons } });
   if (data.touchIcons.length === 0) drafts.push({ info: CHECKS.favicon, key: "webclip-missing", hint: "laag", message: "Geen web clip (apple-touch-icon) ingesteld." });
   else if (data.touchIcons.some((u) => DEFAULT_ICON.test(u))) drafts.push({ info: CHECKS.favicon, key: "webclip-default", hint: "laag", message: "De standaard web clip van Webflow wordt gebruikt.", evidence: { touchIcons: data.touchIcons } });
-  if (data.hasBadge) drafts.push({ info: CHECKS.webflowBadge, key: "badge", element: ".w-webflow-badge", message: "De Webflow-badge staat op de pagina." });
+  if (data.hasBadge) {
+    drafts.push(
+      ctx.onWebflowIo
+        ? {
+            info: CHECKS.webflowBadge,
+            key: "badge",
+            label: "na te kijken",
+            element: ".w-webflow-badge",
+            message: "De Webflow-badge staat op de pagina. Op een .webflow.io-domein toont Webflow die altijd als de site geen betaald site plan heeft; controleer het site plan of het live domein.",
+          }
+        : { info: CHECKS.webflowBadge, key: "badge", element: ".w-webflow-badge", message: "De Webflow-badge staat op de pagina." },
+    );
+  }
   if (!data.lang || !data.lang.trim()) drafts.push({ info: CHECKS.lang, key: "lang-missing", message: "Het html-element heeft geen lang-attribuut." });
   else if (!LANG_FORMAT.test(data.lang.trim())) drafts.push({ info: CHECKS.lang, key: `lang-invalid|${data.lang}`, message: `Ongeldige taalcode "${data.lang}".`, evidence: { lang: data.lang } });
   return drafts;
 }
 
-export function pageDrafts(data: RawPageData, page: string): Draft[] {
-  return [...headingChecks(data, page), ...imageChecks(data, page), ...contentChecks(data, page), ...formChecks(data), ...settingsChecks(data)];
+export function pageDrafts(data: RawPageData, page: string, ctx: PageContext = { onWebflowIo: false }): Draft[] {
+  return [...headingChecks(data, page), ...imageChecks(data), ...contentChecks(data, page), ...formChecks(data), ...settingsChecks(data, ctx), ...testPageChecks(page)];
+}
+
+function testPageChecks(page: string): Draft[] {
+  const word = testPageWord(page);
+  if (!word) return [];
+  return [
+    {
+      info: CHECKS.testPage,
+      key: page,
+      label: "na te kijken",
+      message: `Het adres bevat "${word}": mogelijk een test- of kopiepagina of een testitem uit het CMS dat niet online hoort.`,
+      evidence: { word },
+    },
+  ];
 }
 
 /** Eén bevinding per pagina, met alle viewports waar de pagina horizontaal scrolt. */

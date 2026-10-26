@@ -69,7 +69,7 @@ test("volledige check-up: starten, opvolgen, bevindingen ophalen", async () => {
     await new Promise((r) => setTimeout(r, 500));
   }
   assert.equal(status.status, "done", status.error);
-  assert.equal(status.summary.pages, 7);
+  assert.equal(status.summary.pages, 8);
   assert.ok(status.coverage.length >= 10);
 
   const first = parse(await client.callTool({ name: "get_findings", arguments: { job_id: started.job_id, limit: 5 } }));
@@ -79,10 +79,17 @@ test("volledige check-up: starten, opvolgen, bevindingen ophalen", async () => {
   assert.equal(first.findings[0].hint, "hoog");
 
   const links = parse(await client.callTool({ name: "get_findings", arguments: { job_id: started.job_id, check: "broken-links" } }));
-  assert.equal(links.total, 4);
+  assert.equal(links.total, 5);
 
   const page = parse(await client.callTool({ name: "get_findings", arguments: { job_id: started.job_id, page: "/formulier" } }));
   assert.ok(page.findings.every((f: { pages: string[] }) => f.pages.includes("/formulier")));
+  await client.close();
+});
+
+test("ongeldig live domein wordt meteen geweigerd", async () => {
+  const client = await connect();
+  const result = await client.callTool({ name: "start_checkup", arguments: { url: `${site.origin}/`, live_domain: "geen domein" } });
+  assert.equal(result.isError, true);
   await client.close();
 });
 

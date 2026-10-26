@@ -48,18 +48,21 @@ export function pathOf(url: string): string {
 /**
  * Leest sitemap.xml van de site. Webflow zet in de sitemap soms het live domein,
  * ook op staging: daarom nemen we enkel het pad en zetten we het op het domein van de check-up.
+ * De hosts uit de sitemap komen mee terug, zodat het live domein herkend kan worden.
  */
 export async function readSitemap(
   origin: string,
   fetchText: (url: string) => Promise<string | null>,
-): Promise<string[]> {
+): Promise<{ pages: string[]; hosts: string[] }> {
   const xml = await fetchText(new URL("/sitemap.xml", origin).toString());
-  if (!xml) return [];
+  if (!xml) return { pages: [], hosts: [] };
   const locs = [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1].replace(/&amp;/g, "&"));
   const pages: string[] = [];
+  const hosts = new Set<string>();
   for (const loc of locs) {
     try {
       const u = new URL(loc);
+      hosts.add(u.hostname.toLowerCase());
       const onOrigin = new URL(u.pathname, origin).toString();
       const normalized = normalizePageUrl(onOrigin);
       if (normalized && isLikelyHtml(normalized)) pages.push(normalized);
@@ -67,5 +70,21 @@ export async function readSitemap(
       // ongeldige <loc> overslaan
     }
   }
-  return [...new Set(pages)];
+  return { pages: [...new Set(pages)], hosts: [...hosts] };
+}
+
+/**
+ * Maakt van invoer zoals "https://www.klant.be/over" of "klant.be" een kaal domein ("klant.be").
+ * Geeft null als het geen geldige hostnaam is.
+ */
+export function normalizeDomain(input: string): string | null {
+  const raw = input.trim().toLowerCase();
+  if (!raw) return null;
+  try {
+    const host = new URL(raw.includes("://") ? raw : `https://${raw}`).hostname.replace(/\.$/, "");
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) return null;
+    return host.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
 }
