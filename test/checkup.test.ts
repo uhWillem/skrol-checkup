@@ -103,8 +103,15 @@ test("links: kapot intern, kapot extern, na te kijken, en werkende links niet", 
   assert.equal(result.summary.liveDomain, "klant.be");
   assert.equal(result.summary.liveDomainSource, "sitemap");
   // De oude site is niet bereikbaar: de migratiecontroles staan als overgeslagen in de samenvatting.
-  assert.deepEqual(result.summary.skipped?.map((s) => s.check), ["redirects", "slugs", "seo-migration"]);
-  assert.match(result.summary.skipped?.[0].reason ?? "", /niet bereikbaar/);
+  const skipped = result.summary.skipped ?? [];
+  const migration = skipped.filter((s) => ["redirects", "slugs", "seo-migration"].includes(s.check));
+  assert.equal(migration.length, 3);
+  assert.match(migration[0].reason, /niet bereikbaar/);
+  // Zonder Webflow-token lopen de controles van de Webflow-lezer niet.
+  const webflow = skipped.filter((s) => !migration.includes(s));
+  assert.deepEqual(webflow.map((s) => s.check).sort(), ["cms-content", "cms-fields", "cms-items", "conditional-visibility", "draft-pages", "page-names", "timezone"]);
+  assert.match(webflow[0].reason, /geen Webflow-token/);
+  assert.equal(result.summary.webflow, undefined);
   const live = byUrl.get("https://klant.be/oude-pagina");
   assert.equal(live?.hint, "hoog");
   assert.equal(live?.evidence?.checkedUrl, `${site.origin}/oude-pagina`);

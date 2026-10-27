@@ -62,7 +62,39 @@ export const CHECKS = {
   redirects: { id: "redirects", item: "Redirects", category: "SEO", hint: "hoog" },
   slugs: { id: "slugs", item: "Page and CMS Slugs", category: "SEO", hint: "laag" },
   seoMigration: { id: "seo-migration", item: "When Migrating - SEO Title & Description", category: "SEO", hint: "midden" },
+  // Webflow-lezer: enkel met een Webflow-token voor de site.
+  cmsFields: { id: "cms-fields", item: "CMS Fields", category: "CMS Pages", hint: "laag" },
+  cmsItems: { id: "cms-items", item: "Dummy CMS Content", category: "CMS Pages", hint: "midden" },
+  cmsContent: { id: "cms-content", item: "Dummy CMS Content", category: "CMS Pages", hint: "hoog" },
+  conditionalVisibility: { id: "conditional-visibility", item: "Conditional Visibility", category: "CMS Pages", hint: "midden" },
+  pageNames: { id: "page-names", item: "Page Names in Title Case", category: "Naming Conventions", hint: "laag" },
+  draftPages: { id: "draft-pages", item: "Missing Content", category: "Usability and Design", hint: "laag" },
+  timezone: { id: "timezone", item: "Timezone", category: "Project Settings", hint: "midden" },
 } as const satisfies Record<string, CheckInfo>;
+
+/** Controles die enkel lopen met een Webflow-token voor de site. */
+export const WEBFLOW_CHECKS: readonly string[] = [
+  CHECKS.cmsFields.id,
+  CHECKS.cmsItems.id,
+  CHECKS.cmsContent.id,
+  CHECKS.conditionalVisibility.id,
+  CHECKS.pageNames.id,
+  CHECKS.draftPages.id,
+  CHECKS.timezone.id,
+];
+
+export interface WebflowSummary {
+  /** Naam van de site in Webflow. */
+  site: string;
+  timeZone?: string;
+  pages?: number;
+  collections?: number;
+  items?: number;
+  /** Collecties met meer items dan er gelezen werden. */
+  truncated?: string[];
+  /** Delen die niet gelezen konden worden, bv. door een ontbrekende scope. */
+  errors?: string[];
+}
 
 /** Controles die enkel lopen als de oude site op het live domein te lezen is. */
 export const MIGRATION_CHECKS: readonly string[] = [CHECKS.redirects.id, CHECKS.slugs.id, CHECKS.seoMigration.id];
@@ -128,6 +160,8 @@ export interface CheckupSummary {
   liveDomainSource?: "opgegeven" | "sitemap";
   /** Vergelijking met de oude site op het live domein. */
   migration?: MigrationSummary;
+  /** Wat de Webflow-lezer gelezen heeft. */
+  webflow?: WebflowSummary;
   /** Controles die niet gelopen hebben, met de reden. Die punten moet het team zelf nakijken. */
   skipped?: Array<{ check: string; reason: string }>;
 }

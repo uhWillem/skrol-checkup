@@ -180,7 +180,8 @@ const SEPARATOR = /\||\s[–—·-]\s|:\s/;
 const norm = (s: string): string => clean(s).toLowerCase();
 const COPY_TITLE = /\bcopy of\b|\(copy\)|\bkopie van\b|\(kopie\)/i;
 
-function folderOf(paths: string[]): string {
+/** Gemeenschappelijke map van paden, bv. ["/blog/a", "/blog/b"] → "/blog". */
+export function folderOf(paths: string[]): string {
   const parts = paths.map((p) => p.split("/").filter(Boolean));
   const common: string[] = [];
   for (let i = 0; i < Math.min(...parts.map((p) => p.length)) - 1; i++) {

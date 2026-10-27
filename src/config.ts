@@ -32,6 +32,13 @@ export interface Config {
   /** Pad naar een Chromium-binary; leeg = de browser van Playwright zelf. */
   chromiumExecutable: string;
   userAgent: string;
+  /**
+   * Webflow-sitetokens met enkel leesrechten (sites:read, pages:read, cms:read), gescheiden door komma's.
+   * De tool kiest zelf het token van de site die gecontroleerd wordt. Leeg = geen Webflow-lezer.
+   */
+  webflowTokens: string[];
+  /** Adres van de Webflow API; enkel anders in tests. */
+  webflowApiBase: string;
 }
 
 function list(value: string | undefined, fallback: string[]): string[] {
@@ -75,6 +82,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     linkConcurrency: int(env.LINK_CONCURRENCY, 8),
     maxRedirects: int(env.MAX_REDIRECTS, 5),
     chromiumExecutable: env.CHROMIUM_EXECUTABLE ?? "",
-    userAgent: env.USER_AGENT ?? "SkrolCheckup/0.5 (+https://www.skrol.agency)",
+    userAgent: env.USER_AGENT ?? "SkrolCheckup/0.6 (+https://www.skrol.agency)",
+    // Tokens zijn hoofdlettergevoelig: niet door list() halen, dat maakt alles kleine letters.
+    webflowTokens: (env.WEBFLOW_TOKENS ?? "").split(",").map((t) => t.trim()).filter(Boolean),
+    webflowApiBase: (env.WEBFLOW_API_BASE ?? "https://api.webflow.com").replace(/\/$/, ""),
   };
 }

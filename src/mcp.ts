@@ -7,7 +7,7 @@ import type { UrlGuard } from "./url-guard.js";
 import { normalizeDomain } from "./discover.js";
 import { takeScreenshot } from "./screenshot.js";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.6.0";
 const MAX_PAGES_SHOWN = 20;
 
 /** Welke checklist-punten deze versie automatisch controleert; controles die niet gelopen hebben tellen niet mee. */

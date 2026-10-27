@@ -7,7 +7,8 @@ import { checkLink, fetchWithGuard, mapLimit, type LinkStatus } from "./links.js
 import { fontDrafts, hoverDraft, layoutDrafts, overflowDrafts, pageDrafts, styleDefaultDrafts, type Draft } from "./checks.js";
 import { navigationDrafts } from "./navigation.js";
 import { migrationDrafts } from "./migration.js";
-import { parseSeo, seoDrafts, type SeoPage } from "./seo.js";
+import { folderOf, parseSeo, seoDrafts, type SeoPage } from "./seo.js";
+import { readWebflow, webflowDrafts, webflowSummary } from "./webflow.js";
 import {
   AUTO_SCROLL,
   COLLECT_PAGE_DATA,
@@ -26,7 +27,17 @@ import {
   type RawOverflow,
   type RawPageData,
 } from "./page-scripts.js";
-import { CHECKS, MIGRATION_CHECKS, type CheckupSummary, type Finding, type Hint, type MigrationSummary, type PageResult } from "./types.js";
+import {
+  CHECKS,
+  MIGRATION_CHECKS,
+  WEBFLOW_CHECKS,
+  type CheckupSummary,
+  type Finding,
+  type Hint,
+  type MigrationSummary,
+  type PageResult,
+  type WebflowSummary,
+} from "./types.js";
 import { matchesDomain, type UrlGuard } from "./url-guard.js";
 
 export interface Progress {
@@ -355,10 +366,26 @@ export async function runCheckup(
     },
   );
   for (const { draft, pages: on } of siteDrafts) for (const p of on) findings.add(draft, p);
+  const skipped: Array<{ check: string; reason: string }> = [];
+
+  // Webflow-lezer: CMS, paginanamen, drafts en tijdzone uit de Webflow API.
+  let webflow: WebflowSummary | undefined;
+  onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "Webflow lezen" });
+  const wf = await readWebflow(config, startHost).catch((e: Error) => ({ skipped: `fout bij het lezen van Webflow: ${e.message.split("\n")[0]}` }));
+  if ("skipped" in wf) for (const check of WEBFLOW_CHECKS) skipped.push({ check, reason: wf.skipped });
+  else {
+    webflow = webflowSummary(wf);
+    // Waar de CMS-pagina's van elke collectie staan, volgens de crawl (data-wf-collection op de pagina).
+    const byCollection = new Map<string, string[]>();
+    for (const [p, seo] of seoPages) if (seo.wfCollection) byCollection.set(seo.wfCollection, [...(byCollection.get(seo.wfCollection) ?? []), p]);
+    const collectionFolders = new Map([...byCollection].map(([id, paths]) => [id, folderOf(paths)] as const));
+    for (const { draft, pages: on } of webflowDrafts(wf, { startPath: pathOf(startUrl), liveDomain, collectionFolders })) {
+      for (const p of on) findings.add(draft, p);
+    }
+  }
 
   // Migratie: de oude site op het live domein vergelijken met de nieuwe.
   let migration: MigrationSummary | undefined;
-  const skipped: Array<{ check: string; reason: string }> = [];
   if (liveDomain) {
     onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "oude site vergelijken" });
     const result = await migrationDrafts(
@@ -394,6 +421,7 @@ export async function runCheckup(
     ...(pages.some((p) => p.analysisError) ? { analysisErrors: pages.filter((p) => p.analysisError).length } : {}),
     ...(liveDomain ? { liveDomain, liveDomainSource } : {}),
     ...(migration ? { migration } : {}),
+    ...(webflow ? { webflow } : {}),
     ...(skipped.length > 0 ? { skipped } : {}),
   };
   for (const f of list) {

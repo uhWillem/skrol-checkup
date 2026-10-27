@@ -48,15 +48,15 @@ Elke bevinding gaat naar de soort van haar controle (`check`):
 
 | Soort | Code | Controles |
 | --- | --- | --- |
-| Inhoud | I | `missing-content`, `test-page` |
+| Inhoud | I | `missing-content`, `test-page`, `draft-pages` |
 | Responsive | R | `horizontal-scroll`, `overlap`, `clipped-text`, `text-outside`, `image-text-order`, en wat je zelf op screenshots ziet |
 | Links | L | `broken-links`, `empty-links` |
 | Formulieren | F | `form-success-message`, `form-error-message`, `form-name`, `form-inputs` |
 | SEO | S | `heading-1`, `heading-structure`, `image-alt`, `seo-title`, `seo-description`, `seo-migration`, `redirects`, `slugs`, `schema`, `page-structure`, `indexing`, `noindex`, `sitemap`, `default-domain` |
 | Navigatie en logo | N | `nav-sticky`, `nav-scroll-lock`, `nav-menu-fit`, `logo-link`, `logo-format` |
 | Afbeeldingen en stijl | A | `image-quality`, `hover-state`, `fonts`, `heading-style`, `input-style` |
-| CMS | C | `empty-state`, `cms-seo`, `cms-slugs` |
-| Projectinstellingen | P | `webflow-badge`, `favicon`, `lang`, `gtm` |
+| CMS | C | `empty-state`, `cms-seo`, `cms-slugs`, `cms-fields`, `cms-items`, `cms-content`, `conditional-visibility` |
+| Projectinstellingen | P | `webflow-badge`, `favicon`, `lang`, `gtm`, `timezone`, `page-names` |
 
 Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij past.
 
@@ -73,6 +73,7 @@ Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij
 - Details die niet in één cel passen (alle kapotte links, alle secties, oude paden) komen direct onder de tabel van hun soort: per bug een kop `### L1 · korte titel` en daaronder een kleine tabel met één rij per link, sectie of pagina. Onder de kop mag hoogstens één korte alinea uitleg staan. Geen losse notities of opsommingen onder de tabellen, en dezelfde gegevens nooit in twee detailtabellen.
 - Een bug die na controle geschrapt is, vermeld je in één zin in de inleiding van haar soort.
 - Stopte de check-up aan het vangnet (`stoppedAtMaxPages`), zeg dat bovenaan het rapport.
+- Webflow-lezer: staat er `webflow` in de samenvatting, noem dan in de inleiding van CMS welke site gelezen is en hoeveel collecties en items. Staan de Webflow-controles in `skipped`, zet de reden dan bij die punten op de afvinklijst (bv. "geen Webflow-token voor deze site").
 - Migratie: staat er `migration` in de samenvatting, zet dan bovenaan de SEO-soort één zin met de cijfers, bv. "Van de 120 pagina's van de oude site (www.klant.be) bestaan er 80 op hetzelfde pad, 25 hebben een redirect en 15 geven een 404." Met `truncated: true` zeg je dat enkel de eerste 300 pagina's vergeleken zijn. Staan de migratiecontroles in `skipped`, zet de reden dan bij Redirects, Page and CMS Slugs en When Migrating op de afvinklijst.
 - Bij `redirects` en `slugs` zijn de pagina's oude paden: zet ze als gewone tekst. De volledige lijst (uit `evidence`) komt in de detailtabel van de bug, gegroepeerd per sectie van de oude site (kolommen Groep, Aantal, Oude paden). Bij `slugs` toon je per pad waar de redirect naartoe gaat (kolommen Oud pad, Redirect naar).
 - Bij `seo-migration` toon je in de detailtabel per pagina de oude en de nieuwe titel (of description), de eerste tien en het totaal.

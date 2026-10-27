@@ -2,7 +2,7 @@
 
 MCP-server voor de Webflow check-up bot van Skrol. De server crawlt een site in een headless Chromium, voert vaste controles uit uit de pre-launch checklist, en geeft de bevindingen aan Claude. Er zit geen AI in de server: dezelfde site geeft elke keer dezelfde bevindingen. Claude beoordeelt en schrijft het rapport.
 
-Zie het technisch plan voor de volledige architectuur. Dit is versie 0.5: bijgestuurd na de eerste echte check-up (in4care), met lay-outcontroles, screenshots, navigatie, hoverstijlen, fonts, standaardstijlen van Webflow, SEO en een vergelijking met de oude site bij een migratie.
+Zie het technisch plan voor de volledige architectuur. Dit is versie 0.6: bijgestuurd na de eerste echte check-up (in4care), met lay-outcontroles, screenshots, navigatie, hoverstijlen, fonts, standaardstijlen van Webflow, SEO, een vergelijking met de oude site bij een migratie, en de Webflow-lezer voor het CMS en de projectinstellingen.
 
 ## Tools
 
@@ -62,12 +62,31 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.5: bijges
 | `redirects` | Redirects: pagina's van de oude site die op de nieuwe site geen pagina en geen redirect hebben (404 na de lancering). Enkel met een live domein. | hoog |
 | `slugs` | Page and CMS Slugs: oude pagina's die via een redirect op een ander pad uitkomen. Enkel met een live domein. | laag |
 | `seo-migration` | When Migrating - SEO Title & Description: pagina's met een andere titel of description dan op de oude site. Enkel met een live domein. | midden |
+| `cms-fields` | CMS Fields: velden zonder helptekst, en velden die in geen enkel item ingevuld zijn ("na te kijken"). Webflow-lezer. | laag |
+| `cms-items` | Dummy CMS Content: collecties met minder dan 3 items; een lege collectie is "na te kijken". Webflow-lezer. | midden |
+| `cms-content` | Dummy CMS Content: items met opvultekst of een testnaam, ook items die nergens gelinkt zijn of nog draft zijn. Webflow-lezer. | hoog |
+| `conditional-visibility` | Conditional Visibility: velden die in sommige items leeg zijn, zodat de template het element moet verbergen. "Na te kijken". Webflow-lezer. | midden |
+| `page-names` | Page Names in Title Case: paginanamen in Webflow die niet in Title Case staan. Webflow-lezer. | laag |
+| `draft-pages` | Missing Content: pagina's die nog als draft staan en dus niet mee online gaan. "Na te kijken". Webflow-lezer. | laag |
+| `timezone` | Timezone: geen tijdzone, of een tijdzone die niet past bij het land van het live domein (bv. .be en niet Europe/Brussels). Zonder live domein "na te kijken". Webflow-lezer. | midden |
 
 Afbeeldingen in de Webflow-badge en kaarttegels tellen niet mee voor alt-teksten, net als een lege alt in een link die al tekst heeft (bv. een pijltje naast "Lees meer").
 
 ### Live domein
 
 Op staging verwijzen oude links vaak nog naar het live domein van de klant (bv. `https://www.klant.be/oude-pagina`). Na de lancering draait de nieuwe site op dat domein, dus de tool controleert zo'n link op de nieuwe site: bestaat `/oude-pagina` daar niet, dan is het een kapotte interne link (hoog). Het live domein komt uit `live_domain` bij `start_checkup`, of anders uit `sitemap.xml` als Webflow daar het live domein in zet. De samenvatting toont welk domein gebruikt is (`liveDomain`, `liveDomainSource`).
+
+### Webflow-lezer
+
+Met een Webflow-sitetoken leest de tool ook de gegevens uit Webflow zelf: de site (tijdzone), alle pagina's (ook drafts) en elke CMS-collectie met haar velden en items, tot 1000 items per collectie. Het token kan enkel lezen en staat in de serverinstellingen, niet in de chat:
+
+1. In Webflow: Site settings > Apps & integrations > API access > Generate API token. Enkel een site-admin kan dat.
+2. Geef het token een naam (bv. "Skrol check-up") en enkel deze scopes, allemaal Read-only: Sites, Pages en CMS.
+3. Zet het token in Coolify bij de omgevingsvariabele `WEBFLOW_TOKENS`. Meerdere sites: tokens gescheiden door komma's. Herstart de app.
+
+De tool kiest zelf het token van de site die gecontroleerd wordt: op staging aan de naam van het .webflow.io-subdomein, op een eigen domein aan de custom domains. Is er geen passend token, dan staan de controles van de Webflow-lezer in `skipped` met de reden. De samenvatting toont wat gelezen is in `webflow`. Een token vervalt na 365 dagen zonder gebruik; per site kunnen er 5 zijn.
+
+Klassen, kleurvariabelen, interacties en symbolen zitten niet in de Data API van Webflow en blijven op de afvinklijst.
 
 ### SEO en migratie
 
@@ -125,5 +144,5 @@ Uit het technisch plan, in volgorde:
 
 1. Overige browsercontroles uit de checklist-mapping: target en rel op externe links, eigen formuliervalidatie, interactiesnelheid, hoogte van afbeeldingen. Publicatie-instellingen (minify, secure frame headers) zijn op staging niet te zien.
 2. Firefox en WebKit, Lighthouse.
-3. Webflow-lezer (Data API v2 met een token met enkel leesrechten): SEO-velden, CMS-velden en -items, slugs, paginanamen, tijdzone.
+3. Webflow-lezer, volgende stap: componenten per pagina (Navigation and Footer Symbols), sortering van CMS-lijsten.
 4. Authenticatie (OAuth in plaats van een API-sleutel in de URL-instellingen).

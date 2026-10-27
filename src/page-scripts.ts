@@ -1,6 +1,8 @@
 // Scripts die in de pagina draaien. Ze staan als tekst in de code, zodat de
 // TypeScript-compiler er niets aan verandert dat de browser niet kent.
 
+import { LOREM_WORDS } from "./text.js";
+
 export interface RawHeading {
   level: number;
   text: string;
@@ -146,16 +148,7 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
 
   // Woorden uit lorem ipsum en de opvultekst die Webflow in CMS-items zet. Een tekst telt als opvultekst
   // als minstens de helft van de woorden hieruit komt en er minstens 4 verschillende in staan.
-  const LOREM = new Set(("lorem ipsum dolor sit amet consectetur adipiscing elit sed eiusmod tempor incididunt ut labore et dolore " +
-    "aliqua enim ad minim veniam quis nostrud exercitation ullamco laboris nisi aliquip ex ea commodo consequat duis aute irure " +
-    "reprehenderit voluptate velit esse cillum eu fugiat nulla pariatur excepteur sint occaecat cupidatat non proident sunt culpa " +
-    "qui officia deserunt mollit id est laborum vestibulum pellentesque tincidunt aliquam malesuada fringilla suspendisse viverra " +
-    "ultricies imperdiet habitasse faucibus vulputate tristique senectus posuere ornare blandit placerat mattis porttitor bibendum " +
-    "eleifend sagittis scelerisque lacinia pharetra volutpat molestie sodales mauris arcu nisl tellus tortor urna diam quisque " +
-    "ligula felis montes etiam risus donec augue fusce fames habitant purus nunc odio morbi neque egestas gravida auctor accumsan " +
-    "aenean elementum rhoncus lectus varius nibh dapibus sapien hendrerit euismod condimentum dictum semper eget ultrices iaculis " +
-    "rutrum congue convallis facilisis lobortis luctus maecenas nullam phasellus praesent quam sollicitudin vehicula venenatis " +
-    "vivamus vitae nec vel ac at in mi leo metus nisi sem ante justo erat lacus libero orci turpis velit massa aliquet").split(" "));
+  const LOREM = new Set(${JSON.stringify(LOREM_WORDS)});
   const isPseudoLatin = (text) => {
     const words = text.toLowerCase().match(/[a-z]+/g) || [];
     if (words.length < 6) return false;
