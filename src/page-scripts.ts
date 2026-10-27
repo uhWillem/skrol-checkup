@@ -717,22 +717,25 @@ export const STYLE_DEFAULTS = String.raw`(() => {
   return { headings, input, body: { fontFamily: b.fontFamily, fontSize: b.fontSize, lineHeight: b.lineHeight } };
 })()`;
 
-export interface RawNavSticky {
+export interface RawNavState {
   selector: string;
-  skipped: boolean;
-  visibleAtTop?: boolean;
-  opaque?: boolean;
+  /** De pagina is lang genoeg om 800 px te scrollen. */
+  longEnough: boolean;
+  scrollY: number;
+  visibleAtTop: boolean;
+  opaque: boolean;
 }
 
-/** Scrolt 800 px en kijkt of de navigatie bovenaan blijft met een achtergrond die niet doorschijnt. */
-export const NAV_STICKY = String.raw`(async () => {
+/**
+ * Toestand van de navigatie op de huidige scrollpositie: staat ze bovenaan in beeld, en heeft ze een achtergrond
+ * die niet doorschijnt. Het scrollen zelf gebeurt met echte scrollbewegingen vanuit navigation.ts.
+ */
+export const NAV_STATE = String.raw`(() => {
   ${HELPERS}
   const nav = document.querySelector(".w-nav") || document.querySelector("header") || document.querySelector("nav");
   if (!nav) return null;
   const selector = selectorOf(nav);
-  if (document.documentElement.scrollHeight < window.innerHeight + 800) return { selector, skipped: true };
-  window.scrollTo(0, 800);
-  await new Promise((r) => setTimeout(r, 500));
+  const longEnough = document.documentElement.scrollHeight >= window.innerHeight + 800;
   const r = nav.getBoundingClientRect();
   const ns = getComputedStyle(nav);
   const visibleAtTop = r.top <= 2 && r.bottom > 10 && ns.display !== "none" && ns.visibility !== "hidden" && Number.parseFloat(ns.opacity) > 0.5;
@@ -753,9 +756,7 @@ export const NAV_STICKY = String.raw`(async () => {
       if (cr.width >= r.width * 0.9 && cr.height >= r.height * 0.6 && paints(c)) { opaque = true; break; }
     }
   }
-  window.scrollTo(0, 0);
-  await new Promise((r) => setTimeout(r, 300));
-  return { selector, skipped: false, visibleAtTop, opaque };
+  return { selector, longEnough, scrollY: Math.round(window.scrollY), visibleAtTop, opaque };
 })()`;
 
 export interface RawMenuState {

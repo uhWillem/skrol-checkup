@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8"><title>Navigatie die verdwijnt bij scrollen</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    .w-nav { position: fixed; top: 0; left: 0; right: 0; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: #fff; z-index: 10; transition: transform 0.2s; }
+    .w-nav.weg { transform: translateY(-100%); }
+    .w-nav-menu { display: flex; gap: 16px; }
+    a:hover { color: #c00; }
+    .lang { height: 3000px; padding: 76px 16px 16px; }
+  </style>
+</head>
+<body>
+  <div class="w-nav">
+    <a href="/" class="w-nav-brand"><img src="/logo.svg" alt="Klant, naar de homepage" width="80" height="30"></a>
+    <nav class="w-nav-menu"><a href="/over">Link 1</a><a href="/over">Link 2</a></nav>
+  </div>
+  <main class="lang"><h1>Navigatie die verdwijnt</h1><p>Naar beneden scrollen verbergt de navigatie, naar boven scrollen toont ze weer.</p></main>
+  <footer><a href="/" class="footer-logo"><img src="/logo.svg" alt="Klant" width="80" height="30"></a></footer>
+  <script>
+    const nav = document.querySelector(".w-nav");
+    let last = 0;
+    addEventListener("scroll", () => {
+      const y = scrollY;
+      nav.classList.toggle("weg", y > last && y > 100);
+      last = y;
+    }, { passive: true });
+  </script>
+</body>
+</html>

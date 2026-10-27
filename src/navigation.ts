@@ -3,7 +3,7 @@
 
 import type { BrowserContext, Page } from "playwright";
 import type { Draft } from "./checks.js";
-import { LOGO_INFO, MENU_STATE, NAV_STICKY, type RawLogo, type RawMenuState, type RawNavSticky } from "./page-scripts.js";
+import { LOGO_INFO, MENU_STATE, NAV_STATE, type RawLogo, type RawMenuState, type RawNavState } from "./page-scripts.js";
 import { CHECKS } from "./types.js";
 
 const SETTLE_MS = 600;
@@ -54,6 +54,54 @@ function logoDrafts(logo: RawLogo, origin: string): Draft[] {
   return drafts;
 }
 
+/** Scrolt met het muiswiel in stappen van 200 px, zoals een bezoeker, zodat scrollinteracties van Webflow reageren. */
+async function wheel(page: Page, dy: number): Promise<void> {
+  const step = dy > 0 ? 200 : -200;
+  for (let done = 0; Math.abs(done) < Math.abs(dy); done += step) {
+    await page.mouse.wheel(0, step);
+    await page.waitForTimeout(120);
+  }
+  await page.waitForTimeout(SETTLE_MS);
+}
+
+/**
+ * Blijft de navigatie bovenaan na 800 px scrollen? Verdwijnt ze, dan scrollt de controle 200 px terug omhoog:
+ * komt ze dan terug, dan is het een navigatie die bewust verdwijnt bij naar beneden scrollen, en dat is in orde.
+ */
+async function stickyDrafts(page: Page): Promise<Draft[]> {
+  const top = (await page.evaluate(NAV_STATE)) as RawNavState | null;
+  if (!top || !top.longEnough) return [];
+  await page.mouse.move(720, 450);
+  await wheel(page, 800);
+  const down = (await page.evaluate(NAV_STATE)) as RawNavState;
+  if (down.visibleAtTop) {
+    if (down.opaque) return [];
+    return [
+      {
+        info: CHECKS.navSticky,
+        key: "transparent",
+        element: down.selector,
+        message: "De navigatie blijft bovenaan maar heeft geen achtergrond: bij het scrollen loopt de inhoud zichtbaar onder de links door.",
+        evidence: { selector: down.selector, scrollY: down.scrollY },
+      },
+    ];
+  }
+  await wheel(page, -200);
+  const up = (await page.evaluate(NAV_STATE)) as RawNavState;
+  if (up.visibleAtTop) return [];
+  return [
+    {
+      info: CHECKS.navSticky,
+      key: "not-sticky",
+      label: "na te kijken",
+      element: down.selector,
+      message:
+        "De navigatie blijft niet bovenaan na 800 px scrollen, en komt ook niet terug als je weer 200 px naar boven scrolt. Volgens de checklist blijft ze zichtbaar.",
+      evidence: { selector: down.selector, scrollYDown: down.scrollY, scrollYUp: up.scrollY },
+    },
+  ];
+}
+
 /** Opent het gsm-menu van Webflow. Geeft de toestand terug, of null als er geen (zichtbare) menuknop is. */
 async function openMenu(page: Page): Promise<RawMenuState | null> {
   const button = page.locator(".w-nav-button").first();
@@ -75,28 +123,8 @@ export async function navigationDrafts(context: BrowserContext, url: string, tim
   const page = await context.newPage();
   try {
     await open(page, url, 1440, 900, timeoutMs);
-    const sticky = (await page.evaluate(NAV_STICKY)) as RawNavSticky | null;
-    if (sticky && !sticky.skipped) {
-      if (!sticky.visibleAtTop) {
-        drafts.push({
-          info: CHECKS.navSticky,
-          key: "not-sticky",
-          label: "na te kijken",
-          element: sticky.selector,
-          message: "De navigatie blijft niet bovenaan na 800 px scrollen. Volgens de checklist blijft ze zichtbaar; een navigatie die bewust verdwijnt is ok.",
-          evidence: { selector: sticky.selector },
-        });
-      } else if (!sticky.opaque) {
-        drafts.push({
-          info: CHECKS.navSticky,
-          key: "transparent",
-          element: sticky.selector,
-          message: "De navigatie blijft bovenaan maar heeft geen achtergrond: bij het scrollen loopt de inhoud zichtbaar onder de links door.",
-          evidence: { selector: sticky.selector },
-        });
-      }
-    }
     drafts.push(...logoDrafts((await page.evaluate(LOGO_INFO)) as RawLogo, origin));
+    drafts.push(...(await stickyDrafts(page)));
 
     // Gsm rechtop: menu openen en proberen te scrollen.
     await open(page, url, 390, 800, timeoutMs);

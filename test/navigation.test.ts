@@ -31,6 +31,11 @@ test("navigatie in orde: geen bevindingen", async () => {
   assert.deepEqual(drafts.map((d) => d.message), []);
 });
 
+test("navigatie die verdwijnt bij naar beneden scrollen en terugkomt bij naar boven scrollen: in orde", async () => {
+  const drafts = await navigationDrafts(context, `${site.origin}/nav-verdwijnt`, 15_000);
+  assert.deepEqual(drafts.map((d) => d.message), []);
+});
+
 test("navigatie fout: niet sticky, pagina scrolt mee, menu past niet, logo", async () => {
   const drafts = await navigationDrafts(context, `${site.origin}/nav-fout`, 15_000);
   const byCheck = new Map(drafts.map((d) => [d.info.id, d]));
