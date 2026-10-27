@@ -29,7 +29,8 @@ before(async () => {
   const config = await testConfig({ API_KEY, MCP_PATH: "/mcp-test" });
   config.port = 0;
   config.host = "127.0.0.1";
-  mcp = await startServer(config);
+  // De oude site van klant.be staat in deze test nergens: zo gaat de test nooit het internet op.
+  mcp = await startServer(config, { oldSiteCandidates: ["http://127.0.0.1:1/"] });
   endpoint = new URL(`http://127.0.0.1:${mcp.port}/mcp-test`);
 });
 

@@ -6,6 +6,8 @@ import { isLikelyHtml, normalizeDomain, normalizeLinkUrl, normalizePageUrl, path
 import { checkLink, fetchWithGuard, mapLimit, type LinkStatus } from "./links.js";
 import { fontDrafts, hoverDraft, layoutDrafts, overflowDrafts, pageDrafts, styleDefaultDrafts, type Draft } from "./checks.js";
 import { navigationDrafts } from "./navigation.js";
+import { migrationDrafts } from "./migration.js";
+import { parseSeo, seoDrafts, type SeoPage } from "./seo.js";
 import {
   AUTO_SCROLL,
   COLLECT_PAGE_DATA,
@@ -24,7 +26,7 @@ import {
   type RawOverflow,
   type RawPageData,
 } from "./page-scripts.js";
-import { CHECKS, type CheckupSummary, type Finding, type Hint, type PageResult } from "./types.js";
+import { CHECKS, MIGRATION_CHECKS, type CheckupSummary, type Finding, type Hint, type MigrationSummary, type PageResult } from "./types.js";
 import { matchesDomain, type UrlGuard } from "./url-guard.js";
 
 export interface Progress {
@@ -36,6 +38,8 @@ export interface Progress {
 export interface CheckupOptions {
   /** Live domein van de klant, bv. "klant.be". Leeg = uit sitemap.xml halen als dat kan. */
   liveDomain?: string;
+  /** Enkel voor tests: waar de oude site staat, in plaats van https://www.{live domein}. */
+  oldSiteCandidates?: string[];
 }
 
 export interface CheckupResult {
@@ -140,6 +144,8 @@ export async function runCheckup(
   const fontRequests = new Map<string, string>();
   const hoverDone = new Set<string>();
   const hoverAttempts = new Map<string, number>();
+  /** SEO-gegevens per pad, uit de HTML die de server teruggaf. */
+  const seoPages = new Map<string, SeoPage>();
 
   onProgress({ pagesDone: 0, pagesFound: 1, phase: "sitemap lezen" });
   const sitemap = await readSitemap(origin, async (url) => {
@@ -198,9 +204,11 @@ export async function runCheckup(
         await page.setViewportSize(config.viewports[0]);
         let status: number | null = null;
         let error: string | undefined;
+        let html: string | null = null;
         try {
           const response = await page.goto(url, { waitUntil: "load", timeout: config.pageTimeoutMs });
           status = response?.status() ?? null;
+          html = response ? await response.text().catch(() => null) : null;
         } catch (e) {
           error = (e as Error).message.split("\n")[0];
         }
@@ -210,6 +218,13 @@ export async function runCheckup(
         pageStatus.set(url, error ? null : status);
         if (error || status === null || status >= 400) return;
         if (new URL(finalUrl).origin !== origin) return;
+        if (html) {
+          try {
+            seoPages.set(pathOf(finalUrl), parseSeo(html, finalUrl));
+          } catch (e) {
+            result.analysisError = `seo: ${(e as Error).message.split("\n")[0]}`;
+          }
+        }
         await settle(page);
         // Eén keer door de pagina scrollen: lazy afbeeldingen laden en scroll-animaties spelen af.
         await page.evaluate(AUTO_SCROLL).catch(() => undefined);
@@ -323,6 +338,48 @@ export async function runCheckup(
 
   for (const { draft, page } of fontDrafts(fontRequests)) findings.add(draft, page);
 
+  // SEO over de hele site.
+  onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "SEO controleren" });
+  const robots = await fetchWithGuard(new URL("/robots.txt", origin).toString(), "GET", config, guard).catch(() => null);
+  const deadPaths = sitemap.pages.filter((u) => {
+    const s = pageStatus.get(u);
+    return s === null || (typeof s === "number" && s >= 400);
+  });
+  const siteDrafts = seoDrafts(
+    [...seoPages].map(([path, seo]) => ({ path, seo })),
+    {
+      startPath: pathOf(startUrl),
+      onWebflowIo,
+      robotsTxt: robots && robots.status === 200 ? (robots.body ?? "") : null,
+      sitemap: { found: sitemap.found, paths: sitemap.pages.map(pathOf), hosts: sitemap.hosts, deadPaths: deadPaths.map(pathOf) },
+    },
+  );
+  for (const { draft, pages: on } of siteDrafts) for (const p of on) findings.add(draft, p);
+
+  // Migratie: de oude site op het live domein vergelijken met de nieuwe.
+  let migration: MigrationSummary | undefined;
+  const skipped: Array<{ check: string; reason: string }> = [];
+  if (liveDomain) {
+    onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "oude site vergelijken" });
+    const result = await migrationDrafts(
+      liveDomain,
+      origin,
+      seoPages,
+      pageStatus,
+      config,
+      guard,
+      (done, total) => onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: `oude site vergelijken (${done}/${total})` }),
+      options.oldSiteCandidates,
+    ).catch((e: Error) => ({ skipped: `fout bij het lezen van de oude site: ${e.message.split("\n")[0]}` }));
+    if ("skipped" in result) for (const check of MIGRATION_CHECKS) skipped.push({ check, reason: result.skipped });
+    else {
+      migration = result.summary;
+      for (const { draft, pages: on } of result.drafts) for (const p of on) findings.add(draft, p);
+    }
+  } else {
+    for (const check of MIGRATION_CHECKS) skipped.push({ check, reason: "geen live domein opgegeven of in de sitemap gevonden" });
+  }
+
   onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "links controleren" });
   await checkAllLinks(occurrences, origin, liveDomain, pageStatus, config, guard, findings);
 
@@ -336,6 +393,8 @@ export async function runCheckup(
     stoppedAtMaxPages,
     ...(pages.some((p) => p.analysisError) ? { analysisErrors: pages.filter((p) => p.analysisError).length } : {}),
     ...(liveDomain ? { liveDomain, liveDomainSource } : {}),
+    ...(migration ? { migration } : {}),
+    ...(skipped.length > 0 ? { skipped } : {}),
   };
   for (const f of list) {
     summary.byHint[f.hint]++;

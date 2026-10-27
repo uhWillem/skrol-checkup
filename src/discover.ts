@@ -53,9 +53,9 @@ export function pathOf(url: string): string {
 export async function readSitemap(
   origin: string,
   fetchText: (url: string) => Promise<string | null>,
-): Promise<{ pages: string[]; hosts: string[] }> {
+): Promise<{ found: boolean; pages: string[]; hosts: string[] }> {
   const xml = await fetchText(new URL("/sitemap.xml", origin).toString());
-  if (!xml) return { pages: [], hosts: [] };
+  if (!xml || !/<(urlset|sitemapindex)\b/i.test(xml)) return { found: false, pages: [], hosts: [] };
   const locs = [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1].replace(/&amp;/g, "&"));
   const pages: string[] = [];
   const hosts = new Set<string>();
@@ -70,7 +70,7 @@ export async function readSitemap(
       // ongeldige <loc> overslaan
     }
   }
-  return { pages: [...new Set(pages)], hosts: [...hosts] };
+  return { found: true, pages: [...new Set(pages)], hosts: [...hosts] };
 }
 
 /**

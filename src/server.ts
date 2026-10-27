@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { loadConfig, type Config } from "./config.js";
 import { JobStore } from "./jobs.js";
+import type { CheckupOptions } from "./runner.js";
 import { createMcpServer, VERSION } from "./mcp.js";
 import { UrlGuard } from "./url-guard.js";
 
@@ -54,9 +55,9 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-export async function startServer(config: Config = loadConfig()) {
+export async function startServer(config: Config = loadConfig(), runDefaults: CheckupOptions = {}) {
   const guard = new UrlGuard(config.allowedDomains, config.allowPrivateNetworks);
-  const store = new JobStore(config, guard);
+  const store = new JobStore(config, guard, runDefaults);
   await store.load();
 
   const http = createServer(async (req, res) => {

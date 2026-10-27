@@ -7,12 +7,14 @@ import type { UrlGuard } from "./url-guard.js";
 import { normalizeDomain } from "./discover.js";
 import { takeScreenshot } from "./screenshot.js";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 const MAX_PAGES_SHOWN = 20;
 
-/** Welke checklist-punten deze versie automatisch controleert. */
-export function coverage(): Array<{ check: string; item: string; category: string }> {
-  return Object.values(CHECKS).map((c) => ({ check: c.id, item: c.item, category: c.category }));
+/** Welke checklist-punten deze versie automatisch controleert; controles die niet gelopen hebben tellen niet mee. */
+export function coverage(skipped: string[] = []): Array<{ check: string; item: string; category: string }> {
+  return Object.values(CHECKS)
+    .filter((c) => !skipped.includes(c.id))
+    .map((c) => ({ check: c.id, item: c.item, category: c.category }));
 }
 
 function json(value: unknown) {
@@ -72,14 +74,16 @@ export function createMcpServer(store: JobStore, config: Config, guard: UrlGuard
       description:
         "Geeft de status en voortgang van een check-up. Als ze klaar is, staat er een samenvatting bij " +
         "(aantal bevindingen per prioriteit en per controle) en de lijst checklist-punten die deze versie controleert. " +
-        "Punten die niet in die lijst staan, moet het team manueel nakijken.",
+        "Punten die niet in die lijst staan, moet het team manueel nakijken. Met een live domein vergelijkt de tool ook de oude site " +
+        "(summary.migration); kon dat niet, dan staat de reden in summary.skipped.",
       inputSchema: { job_id: z.string().describe("ID uit start_checkup") },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ job_id }) => {
       const job = store.get(job_id);
       if (!job) return fail(`Onbekende job: ${job_id}`);
-      return json(job.status === "done" ? { ...job, version: VERSION, coverage: coverage() } : job);
+      if (job.status !== "done") return json(job);
+      return json({ ...job, version: VERSION, coverage: coverage((job.summary?.skipped ?? []).map((s) => s.check)) });
     },
   );
 

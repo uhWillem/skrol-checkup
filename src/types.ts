@@ -46,7 +46,44 @@ export const CHECKS = {
   fonts: { id: "fonts", item: "Fonts", category: "Style Guide", hint: "midden" },
   headingStyle: { id: "heading-style", item: "Global Heading Tags", category: "Style Guide", hint: "midden" },
   inputStyle: { id: "input-style", item: "Custom Inputs and Form Fields", category: "Style Guide", hint: "midden" },
+  // SEO, op de HTML die de server teruggeeft.
+  seoTitle: { id: "seo-title", item: "When It's a New Site - SEO Title & Description", category: "SEO", hint: "midden" },
+  seoDescription: { id: "seo-description", item: "When It's a New Site - SEO Title & Description", category: "SEO", hint: "midden" },
+  cmsSeo: { id: "cms-seo", item: "Dynamic SEO Titles, Descriptions and OG Images", category: "CMS Pages", hint: "hoog" },
+  schema: { id: "schema", item: "Schema Markup", category: "SEO", hint: "midden" },
+  pageStructure: { id: "page-structure", item: "Page Structure", category: "SEO", hint: "laag" },
+  indexing: { id: "indexing", item: "Webflow Domain Indexing", category: "SEO", hint: "midden" },
+  noindex: { id: "noindex", item: "Website Sitemap", category: "SEO", hint: "midden" },
+  sitemap: { id: "sitemap", item: "Website Sitemap", category: "SEO", hint: "midden" },
+  defaultDomain: { id: "default-domain", item: "Default Domain", category: "SEO", hint: "laag" },
+  cmsSlugs: { id: "cms-slugs", item: "CMS Slugs", category: "CMS Pages", hint: "laag" },
+  gtm: { id: "gtm", item: "GTM Set Up", category: "Tracking", hint: "laag" },
+  // Migratie: enkel als er een live domein met een oude site is.
+  redirects: { id: "redirects", item: "Redirects", category: "SEO", hint: "hoog" },
+  slugs: { id: "slugs", item: "Page and CMS Slugs", category: "SEO", hint: "laag" },
+  seoMigration: { id: "seo-migration", item: "When Migrating - SEO Title & Description", category: "SEO", hint: "midden" },
 } as const satisfies Record<string, CheckInfo>;
+
+/** Controles die enkel lopen als de oude site op het live domein te lezen is. */
+export const MIGRATION_CHECKS: readonly string[] = [CHECKS.redirects.id, CHECKS.slugs.id, CHECKS.seoMigration.id];
+
+export interface MigrationSummary {
+  /** Oorsprong van de oude site, bv. https://www.klant.be. */
+  oldSite: string;
+  /** Waar de lijst oude pagina's vandaan komt. */
+  source: "sitemap" | "crawl";
+  oldPages: number;
+  /** Zelfde pad op de nieuwe site. */
+  same: number;
+  /** Ander pad, met een redirect. */
+  redirected: number;
+  /** Geen pagina en geen redirect: 404. */
+  missing: number;
+  /** Niet te controleren (time-out, verwijst naar een ander domein). */
+  failed: number;
+  /** Er waren meer oude pagina's dan het maximum. */
+  truncated: boolean;
+}
 
 export interface Finding {
   /** Stabiele ID: dezelfde bug op dezelfde plek geeft dezelfde ID. */
@@ -89,6 +126,10 @@ export interface CheckupSummary {
   liveDomain?: string;
   /** "opgegeven" via start_checkup, of "sitemap" als het uit sitemap.xml gehaald is. */
   liveDomainSource?: "opgegeven" | "sitemap";
+  /** Vergelijking met de oude site op het live domein. */
+  migration?: MigrationSummary;
+  /** Controles die niet gelopen hebben, met de reden. Die punten moet het team zelf nakijken. */
+  skipped?: Array<{ check: string; reason: string }>;
 }
 
 export type JobStatus = "queued" | "running" | "done" | "failed";

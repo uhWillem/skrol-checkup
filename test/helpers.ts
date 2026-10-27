@@ -79,6 +79,8 @@ export async function startSite(externalOrigin: string): Promise<{ server: Serve
     if (path === "/sitemap.xml") {
       return res.writeHead(200, { "content-type": "application/xml" }).end(await readFile(join(SITE, "sitemap.xml")));
     }
+    // Een redirect zoals een 301 in de Webflow-instellingen, voor de migratietest.
+    if (path === "/diensten/webdesign") return res.writeHead(301, { location: "/over" }).end();
     const size = path.match(/^\/img\/(\d+)x(\d+)\.png$/);
     if (size) return res.writeHead(200, { "content-type": "image/png" }).end(png(Number(size[1]), Number(size[2])));
     if (/\.(png|svg|jpg)$/.test(path)) {

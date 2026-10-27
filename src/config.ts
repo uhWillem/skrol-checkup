@@ -75,6 +75,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     linkConcurrency: int(env.LINK_CONCURRENCY, 8),
     maxRedirects: int(env.MAX_REDIRECTS, 5),
     chromiumExecutable: env.CHROMIUM_EXECUTABLE ?? "",
-    userAgent: env.USER_AGENT ?? "SkrolCheckup/0.4 (+https://www.skrol.agency)",
+    userAgent: env.USER_AGENT ?? "SkrolCheckup/0.5 (+https://www.skrol.agency)",
   };
 }

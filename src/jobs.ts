@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "./config.js";
-import { runCheckup, type CheckupResult } from "./runner.js";
+import { runCheckup, type CheckupOptions, type CheckupResult } from "./runner.js";
 import type { Finding, Job } from "./types.js";
 import type { UrlGuard } from "./url-guard.js";
 
@@ -16,6 +16,8 @@ export class JobStore {
   constructor(
     private config: Config,
     private guard: UrlGuard,
+    /** Vaste opties voor elke check-up; enkel voor tests. */
+    private runDefaults: CheckupOptions = {},
   ) {}
 
   private dir(id: string): string {
@@ -94,7 +96,7 @@ export class JobStore {
           lastSave = Date.now();
           void this.save(job);
         }
-      }, { liveDomain: job.liveDomain });
+      }, { ...this.runDefaults, liveDomain: job.liveDomain });
       await writeFile(join(this.dir(id), "result.json"), JSON.stringify(result, null, 2));
       this.results.set(id, result);
       job.status = "done";

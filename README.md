@@ -2,7 +2,7 @@
 
 MCP-server voor de Webflow check-up bot van Skrol. De server crawlt een site in een headless Chromium, voert vaste controles uit uit de pre-launch checklist, en geeft de bevindingen aan Claude. Er zit geen AI in de server: dezelfde site geeft elke keer dezelfde bevindingen. Claude beoordeelt en schrijft het rapport.
 
-Zie het technisch plan voor de volledige architectuur. Dit is versie 0.4: bijgestuurd na de eerste echte check-up (in4care), met lay-outcontroles, screenshots, navigatie, hoverstijlen, fonts en standaardstijlen van Webflow.
+Zie het technisch plan voor de volledige architectuur. Dit is versie 0.5: bijgestuurd na de eerste echte check-up (in4care), met lay-outcontroles, screenshots, navigatie, hoverstijlen, fonts, standaardstijlen van Webflow, SEO en een vergelijking met de oude site bij een migratie.
 
 ## Tools
 
@@ -48,12 +48,32 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.4: bijges
 | `fonts` | Fonts: fonts van Google Fonts (midden), fonts in TTF, OTF of EOT (laag), en een body met de standaardtekst van Webflow (Arial 14/20). | midden / laag |
 | `heading-style` | Global Heading Tags: koppen zonder class met de standaardgrootte van Webflow (bv. h2 32/36 px). | midden |
 | `input-style` | Custom Inputs and Form Fields: formuliervelden met de standaardstijl van Webflow. | midden |
+| `seo-title` | When It's a New Site - SEO Title & Description: geen titel (hoog), dezelfde titel op meerdere pagina's (midden), langer dan 60 tekens (laag), en korte titels zonder merknaam die nog de paginanaam van Webflow lijken ("na te kijken"). | hoog / midden / laag |
+| `seo-description` | Idem voor de meta description: ontbrekend, dubbel, langer dan 160 tekens. | midden / laag |
+| `cms-seo` | Dynamic SEO Titles, Descriptions and OG Images: alle items van een CMS-template met dezelfde titel of description (niet aan een veld gekoppeld), of zonder; geen OG-afbeelding, of overal dezelfde ("na te kijken"). | hoog / midden / laag |
+| `schema` | Schema Markup: geen JSON-LD op de homepage (midden), ongeldige JSON-LD (hoog), een FAQ-blok zonder FAQPage-schema ("na te kijken"). | midden |
+| `page-structure` | Page Structure: geen of meer dan één `<main>`, geen `<nav>`, geen `<footer>`. | laag |
+| `indexing` | Webflow Domain Indexing: de robots.txt van het .webflow.io-domein houdt zoekmachines niet tegen. | midden |
+| `noindex` | Website Sitemap: pagina's op noindex (Sitemap indexing uit). "Na te kijken". | midden |
+| `sitemap` | Website Sitemap: geen sitemap.xml, pagina's in de sitemap die een fout geven, en pagina's die niet in de sitemap staan ("na te kijken"). | midden / laag |
+| `default-domain` | Default Domain: het domein in de sitemap of de canonical is niet het www-domein. "Na te kijken". | laag |
+| `gtm` | GTM Set Up: geen Google Tag Manager ("na te kijken"), en trackers die buiten GTM geladen worden (gtag.js, Meta Pixel, Hotjar, LinkedIn, HubSpot, Clarity, …). | laag |
+| `cms-slugs` | CMS Slugs: het pad van een CMS-template lijkt meervoud (bv. /projecten/). "Na te kijken". | laag |
+| `redirects` | Redirects: pagina's van de oude site die op de nieuwe site geen pagina en geen redirect hebben (404 na de lancering). Enkel met een live domein. | hoog |
+| `slugs` | Page and CMS Slugs: oude pagina's die via een redirect op een ander pad uitkomen. Enkel met een live domein. | laag |
+| `seo-migration` | When Migrating - SEO Title & Description: pagina's met een andere titel of description dan op de oude site. Enkel met een live domein. | midden |
 
 Afbeeldingen in de Webflow-badge en kaarttegels tellen niet mee voor alt-teksten, net als een lege alt in een link die al tekst heeft (bv. een pijltje naast "Lees meer").
 
 ### Live domein
 
 Op staging verwijzen oude links vaak nog naar het live domein van de klant (bv. `https://www.klant.be/oude-pagina`). Na de lancering draait de nieuwe site op dat domein, dus de tool controleert zo'n link op de nieuwe site: bestaat `/oude-pagina` daar niet, dan is het een kapotte interne link (hoog). Het live domein komt uit `live_domain` bij `start_checkup`, of anders uit `sitemap.xml` als Webflow daar het live domein in zet. De samenvatting toont welk domein gebruikt is (`liveDomain`, `liveDomainSource`).
+
+### SEO en migratie
+
+De SEO-controles lezen de HTML zoals de server ze teruggeeft, dus wat een zoekmachine ziet. CMS-pagina's worden herkend aan hun Webflow-pagina-ID: alle items van een template delen dezelfde ID.
+
+Is er een live domein, dan leest de tool ook de oude site die daar nu nog draait: de pagina's uit haar sitemap (ook via robots.txt en sitemap-indexen), of als er geen sitemap is, door haar links te volgen, met een maximum van 300 pagina's. Elk oud pad wordt op de nieuwe site opgevraagd: bestaat het, verwijst een redirect door, of geeft het een 404? Voor de pagina's die bestaan vergelijkt de tool de titel en de description met de oude. De samenvatting toont de cijfers in `migration`. Kan de oude site niet gelezen worden, dan staan de drie migratiecontroles in `skipped` met de reden, en niet in `coverage`.
 
 Elke pagina wordt in Chromium geladen op 1440 px en één keer helemaal doorgescrold, zodat lazy afbeeldingen laden en scroll-animaties afspelen. Daarna wordt de pagina verkleind naar 1280, 992, 768, 390 en 360 px voor de scroll- en lay-outcontroles. Loopt een controle vast op een pagina, dan gaan de andere controles door en staat de fout bij die pagina in `list_pages`. Bevindingen die op meerdere pagina's voorkomen (bv. een favicon of een formulier in de footer) worden samengevoegd tot één bevinding met alle pagina's.
 
@@ -82,6 +102,7 @@ Alle instellingen gaan via omgevingsvariabelen; zie `.env.example`. De belangrij
 - Elk verzoek van de browser en van de linkcontrole naar een intern adres (localhost, privénetwerken, het metadata-adres van de cloud) wordt geblokkeerd, ook na een redirect.
 - De hoofdpagina mag enkel naar toegestane domeinen navigeren. Scripts en afbeeldingen van derden laden wel, anders klopt de weergave niet.
 - Externe links worden niet in de browser geopend; enkel hun statuscode wordt opgevraagd.
+- De oude site op het live domein wordt enkel met gewone verzoeken gelezen (geen browser, geen scripts), maximaal 300 pagina's.
 - Deze versie vult geen formulieren in.
 
 ## Deployen met Coolify
@@ -102,7 +123,7 @@ In `skill/webflow-checkup/` staat de skill die Claude vertelt hoe het de tools g
 
 Uit het technisch plan, in volgorde:
 
-1. Overige browsercontroles uit de checklist-mapping: SEO-titels en -descriptions, paginastructuur, schema, robots.txt, sitemap, standaarddomein en redirects, target en rel op externe links, eigen formuliervalidatie, publicatie-instellingen, GTM, interactiesnelheid, hoogte van afbeeldingen.
+1. Overige browsercontroles uit de checklist-mapping: target en rel op externe links, eigen formuliervalidatie, interactiesnelheid, hoogte van afbeeldingen. Publicatie-instellingen (minify, secure frame headers) zijn op staging niet te zien.
 2. Firefox en WebKit, Lighthouse.
 3. Webflow-lezer (Data API v2 met een token met enkel leesrechten): SEO-velden, CMS-velden en -items, slugs, paginanamen, tijdzone.
 4. Authenticatie (OAuth in plaats van een API-sleutel in de URL-instellingen).

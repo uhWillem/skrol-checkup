@@ -17,7 +17,8 @@ before(async () => {
   site = await startSite(external.origin);
   const config = await testConfig();
   const guard = new UrlGuard(config.allowedDomains, config.allowPrivateNetworks);
-  result = await runCheckup(`${site.origin}/`, config, guard);
+  // De oude site van klant.be staat in deze test nergens: zo gaat de test nooit het internet op.
+  result = await runCheckup(`${site.origin}/`, config, guard, undefined, { oldSiteCandidates: ["http://127.0.0.1:1/"] });
 });
 
 after(() => {
@@ -101,6 +102,9 @@ test("links: kapot intern, kapot extern, na te kijken, en werkende links niet", 
   // Het live domein komt uit de sitemap; links ernaartoe worden op de testsite zelf gecontroleerd.
   assert.equal(result.summary.liveDomain, "klant.be");
   assert.equal(result.summary.liveDomainSource, "sitemap");
+  // De oude site is niet bereikbaar: de migratiecontroles staan als overgeslagen in de samenvatting.
+  assert.deepEqual(result.summary.skipped?.map((s) => s.check), ["redirects", "slugs", "seo-migration"]);
+  assert.match(result.summary.skipped?.[0].reason ?? "", /niet bereikbaar/);
   const live = byUrl.get("https://klant.be/oude-pagina");
   assert.equal(live?.hint, "hoog");
   assert.equal(live?.evidence?.checkedUrl, `${site.origin}/oude-pagina`);
@@ -203,6 +207,15 @@ test("instellingen: badge, taalcode, favicon", () => {
   const favicon = find("favicon");
   assert.deepEqual(favicon.map((f) => f.message.slice(0, 20)).sort(), ["Geen web clip (apple", "Het Webflow-standaar"]);
   assert.ok(favicon.every((f) => f.pages.length === 1 && f.pages[0] === "/formulier"));
+});
+
+test("SEO-controles lopen mee in de check-up", () => {
+  const missingDescription = result.findings.find((f) => f.check === "seo-description" && f.message.startsWith("Geen meta description"));
+  assert.ok(missingDescription?.pages.includes("/fout"));
+  assert.ok(!missingDescription?.pages.includes("/"));
+  const notListed = result.findings.find((f) => f.check === "sitemap" && f.label === "na te kijken");
+  assert.ok(notListed?.pages.includes("/fout"));
+  assert.ok(!notListed?.pages.includes("/verborgen"));
 });
 
 test("geen valse meldingen op de propere pagina's", () => {

@@ -46,11 +46,11 @@ Elke bevinding gaat naar de soort van haar controle (`check`):
 | Responsive | R | `horizontal-scroll`, `overlap`, `clipped-text`, `text-outside`, `image-text-order`, en wat je zelf op screenshots ziet |
 | Links | L | `broken-links`, `empty-links` |
 | Formulieren | F | `form-success-message`, `form-error-message`, `form-name`, `form-inputs` |
-| SEO | S | `heading-1`, `heading-structure`, `image-alt` |
+| SEO | S | `heading-1`, `heading-structure`, `image-alt`, `seo-title`, `seo-description`, `seo-migration`, `redirects`, `slugs`, `schema`, `page-structure`, `indexing`, `noindex`, `sitemap`, `default-domain` |
 | Navigatie en logo | N | `nav-sticky`, `nav-scroll-lock`, `nav-menu-fit`, `logo-link`, `logo-format` |
 | Afbeeldingen en stijl | A | `image-quality`, `hover-state`, `fonts`, `heading-style`, `input-style` |
-| CMS | C | `empty-state` |
-| Projectinstellingen | P | `webflow-badge`, `favicon`, `lang` |
+| CMS | C | `empty-state`, `cms-seo`, `cms-slugs` |
+| Projectinstellingen | P | `webflow-badge`, `favicon`, `lang`, `gtm` |
 
 Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij past.
 
@@ -66,3 +66,6 @@ Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij
 - Claude kan fixen: "Ja" enkel voor de soorten fixes uit SKILL.md, anders "Nee".
 - Lange lijsten (bv. alle kapotte links) komen in een opsomming onder de tabel van hun soort, met het nummer van de bug erbij.
 - Stopte de check-up aan het vangnet (`stoppedAtMaxPages`), zeg dat bovenaan het rapport.
+- Migratie: staat er `migration` in de samenvatting, zet dan bovenaan de SEO-soort één zin met de cijfers, bv. "Van de 120 pagina's van de oude site (www.klant.be) bestaan er 80 op hetzelfde pad, 25 hebben een redirect en 15 geven een 404." Met `truncated: true` zeg je dat enkel de eerste 300 pagina's vergeleken zijn. Staan de migratiecontroles in `skipped`, zet de reden dan bij Redirects, Page and CMS Slugs en When Migrating op de afvinklijst.
+- Bij `redirects` en `slugs` zijn de pagina's oude paden: zet ze als gewone tekst, en de volledige lijst (uit `evidence`) als opsomming onder de tabel. Bij `slugs` toon je per pad waar de redirect naartoe gaat.
+- Bij `seo-migration` toon je onder de tabel per pagina de oude en de nieuwe titel (of description), de eerste tien en het totaal.
