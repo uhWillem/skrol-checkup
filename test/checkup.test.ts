@@ -159,7 +159,12 @@ test("hover: knoppen en links zonder hoverstijl, links met hoverstijl niet", () 
   const hover = find("hover-state");
   const pages = hover.map((f) => f.pages[0]).sort();
   assert.deepEqual(pages, ["/formulier", "/fout"], hover.map((f) => `${f.pages} ${f.message}`).join("\n"));
-  assert.match(String(hover.find((f) => f.pages[0] === "/fout")?.message), /Knop zonder hover/);
+  const fout = hover.find((f) => f.pages[0] === "/fout");
+  assert.match(String(fout?.message), /Knop zonder hover/);
+  assert.equal(fout?.evidence?.cssHoverRule, false);
+  assert.equal(fout?.evidence?.stylesheetsReadable, true);
+  assert.equal(fout?.label, undefined);
+  // Op /layout: een knop met een :hover-regel die enkel de cursor verandert, en een knop met een Webflow-interactie: geen melding.
 });
 
 test("fonts: oud formaat gemeld; stijlen van Webflow niet aanwezig op de testsite", () => {

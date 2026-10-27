@@ -614,6 +614,52 @@ export const LIST_HOVER_TARGETS = String.raw`(() => {
   return out;
 })()`;
 
+export interface HoverStatic {
+  /** Er staat een :hover-regel in de stylesheets die op dit element van toepassing is. */
+  cssHoverRule: boolean;
+  /** Niet alle stylesheets konden gelezen worden (bv. van een ander domein zonder CORS). */
+  stylesheetsReadable: boolean;
+  /** Het element of iets erin heeft een Webflow-interactie (data-w-id), bv. een hover-animatie. */
+  interaction: boolean;
+}
+
+/** Zoekt in de stylesheets een :hover-regel voor het element, en kijkt of er een Webflow-interactie aan hangt. */
+export function hoverStaticScript(selector: string): string {
+  return `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return null;
+    let found = false;
+    let readable = true;
+    const check = (selectorText) => {
+      for (const part of selectorText.split(",")) {
+        const i = part.indexOf(":hover");
+        if (i < 0) continue;
+        // Het element waarop gehoverd wordt: alles tot het einde van de compound met :hover, zonder :hover.
+        const rest = part.slice(i + 6).match(/^[^\\s>+~]*/);
+        const subject = (part.slice(0, i) + (rest ? rest[0] : "")).replace(/:hover/g, "").trim();
+        if (!subject) continue;
+        try { if (el.matches(subject)) return true; } catch (e) {}
+      }
+      return false;
+    };
+    const visit = (rules) => {
+      for (const rule of rules) {
+        if (found) return;
+        if (rule.selectorText && rule.selectorText.includes(":hover") && check(rule.selectorText)) { found = true; return; }
+        if (rule.cssRules) visit(rule.cssRules);
+      }
+    };
+    for (const sheet of document.styleSheets) {
+      let rules;
+      try { rules = sheet.cssRules; } catch (e) { readable = false; continue; }
+      if (rules) visit(rules);
+      if (found) break;
+    }
+    const interaction = el.hasAttribute("data-w-id") || !!el.querySelector("[data-w-id]");
+    return { cssHoverRule: found, stylesheetsReadable: readable, interaction };
+  })()`;
+}
+
 /** Computed styles van een element, zijn ::before/::after en zijn eerste afstammelingen, als één tekst. */
 export function hoverSignatureScript(selector: string): string {
   return `(() => {

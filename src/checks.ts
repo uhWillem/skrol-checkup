@@ -2,7 +2,7 @@
 // dezelfde sleutel op meerdere pagina's wordt in de runner samengevoegd tot één bevinding.
 
 import { CHECKS, type CheckInfo, type Finding } from "./types.js";
-import type { HoverTarget, RawForm, RawLayout, RawOverflow, RawPageData, RawStyleDefaults } from "./page-scripts.js";
+import type { HoverStatic, HoverTarget, RawForm, RawLayout, RawOverflow, RawPageData, RawStyleDefaults } from "./page-scripts.js";
 
 export interface Draft extends Omit<Finding, "id" | "pages" | "browser" | "check" | "item" | "category" | "hint"> {
   info: CheckInfo;
@@ -455,14 +455,19 @@ export function fontDrafts(requests: Map<string, string>): Array<{ draft: Draft;
   return out;
 }
 
-/** Bevinding voor een link of knop die er bij hover hetzelfde uitziet. */
-export function hoverDraft(target: HoverTarget): Draft {
+/**
+ * Bevinding voor een link of knop zonder hoverstijl: er veranderde niets bij hover, er staat geen :hover-regel
+ * voor in de stylesheets en er hangt geen Webflow-interactie aan. Konden niet alle stylesheets gelezen worden,
+ * dan is het niet zeker.
+ */
+export function hoverDraft(target: HoverTarget, info: HoverStatic): Draft {
   const what = target.kind === "knop" ? "Knop" : target.kind === "navigatielink" ? "Link in de navigatie" : "Link in de footer";
   return {
     info: CHECKS.hoverState,
     key: target.component,
+    label: info.stylesheetsReadable ? undefined : "na te kijken",
     element: target.selector,
-    message: `${what} verandert niet bij hover${target.text ? `: "${target.text}"` : ""}. Geldt voor elke ${target.kind} van dit type.`,
-    evidence: { kind: target.kind, text: target.text, component: target.component },
+    message: `${what} verandert niet bij hover${target.text ? `: "${target.text}"` : ""}, en de CSS heeft er geen hoverstijl voor. Geldt voor elke ${target.kind} van dit type.`,
+    evidence: { kind: target.kind, text: target.text, component: target.component, dynamicChange: false, ...info },
   };
 }

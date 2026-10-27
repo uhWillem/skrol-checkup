@@ -10,6 +10,8 @@ import {
   AUTO_SCROLL,
   COLLECT_PAGE_DATA,
   hoverSignatureScript,
+  hoverStaticScript,
+  type HoverStatic,
   LIST_HOVER_TARGETS,
   MARK_PAIRS,
   MEASURE_LAYOUT,
@@ -188,6 +190,8 @@ export async function runCheckup(
       const page = await context.newPage();
       page.on("response", (res) => {
         const u = res.url();
+        // Enkel fonts van de pagina zelf: een ingesloten video (YouTube) laadt eigen fonts.
+        if (res.frame() !== page.mainFrame()) return;
         if ((res.request().resourceType() === "font" || /\/\/fonts\.googleapis\.com\//i.test(u)) && !fontRequests.has(u)) fontRequests.set(u, path);
       });
       try {
@@ -235,7 +239,10 @@ export async function runCheckup(
             if (changed === null) continue;
             hoverDone.add(target.component);
             tested++;
-            if (!changed) findings.add(hoverDraft(target), path);
+            if (changed) continue;
+            // Niets zien veranderen is niet genoeg: kijk ook in de CSS en naar Webflow-interacties.
+            const statik = (await page.evaluate(hoverStaticScript(target.selector))) as HoverStatic | null;
+            if (statik && !statik.cssHoverRule && !statik.interaction) findings.add(hoverDraft(target, statik), path);
           }
           await page.evaluate("window.scrollTo(0, 0)");
         } catch (e) {
