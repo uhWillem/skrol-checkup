@@ -178,6 +178,7 @@ const DESCRIPTION_MAX = 160;
 /** Scheidingsteken tussen paginatitel en merknaam: "Over ons | Klant", "Over ons – Klant", "Klant: Over ons". */
 const SEPARATOR = /\||\s[–—·-]\s|:\s/;
 const norm = (s: string): string => clean(s).toLowerCase();
+const COPY_TITLE = /\bcopy of\b|\(copy\)|\bkopie van\b|\(kopie\)/i;
 
 function folderOf(paths: string[]): string {
   const parts = paths.map((p) => p.split("/").filter(Boolean));
@@ -296,8 +297,24 @@ export function seoDrafts(entries: SeoEntry[], ctx: SeoContext): SiteDraft[] {
       );
     }
     if (field === "title") {
+      // "Copy of …": de naam van een gekopieerd Webflow-project of een gekopieerde pagina, die Webflow als titel gebruikt.
+      const copies = entries.filter((e) => e.seo.title && COPY_TITLE.test(e.seo.title));
+      if (copies.length > 0) {
+        add(
+          {
+            info,
+            key: "copy",
+            hint: "hoog",
+            message: `${copies.length === 1 ? "De titel" : `${copies.length} titels`} ${quote(copies[0].seo.title!)} ${copies.length === 1 ? "is" : "zijn"} de naam van een gekopieerd project of een gekopieerde pagina: zo verschijnt de pagina in Google.`,
+            evidence: { titles: copies.slice(0, 15).map((e) => ({ path: e.path, title: e.seo.title })) },
+          },
+          copies.map((e) => e.path),
+        );
+      }
       // Een titel van één tot drie woorden zonder scheidingsteken is meestal nog de paginanaam die Webflow invult.
-      const bare = entries.filter((e) => e.seo.title && !templates.has(e.path) && !SEPARATOR.test(e.seo.title) && e.seo.title.split(/\s+/).length <= 3);
+      const bare = entries.filter(
+        (e) => e.seo.title && !templates.has(e.path) && !COPY_TITLE.test(e.seo.title) && !SEPARATOR.test(e.seo.title) && e.seo.title.split(/\s+/).length <= 3,
+      );
       if (bare.length > 0) {
         add(
           {
@@ -390,7 +407,7 @@ export function seoDrafts(entries: SeoEntry[], ctx: SeoContext): SiteDraft[] {
         info: CHECKS.indexing,
         key: "webflow-io",
         message: "Zoekmachines mogen het .webflow.io-domein indexeren. Zet in de projectinstellingen (SEO) de indexering van het Webflow-subdomein uit.",
-        evidence: { robotsTxt: ctx.robotsTxt ? ctx.robotsTxt.slice(0, 300) : null },
+        evidence: { robotsTxt: ctx.robotsTxt === null ? "geen robots.txt" : ctx.robotsTxt.trim() ? ctx.robotsTxt.slice(0, 300) : "robots.txt is leeg" },
       },
       [ctx.startPath],
     );

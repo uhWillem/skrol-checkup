@@ -149,6 +149,17 @@ test("seoDrafts: titels, descriptions, CMS, schema, structuur, indexering, sitem
   assert.equal(find("noindex", "noindex").draft.label, "na te kijken");
 });
 
+test("seoDrafts: een titel van een gekopieerd project is hoog", () => {
+  const entries: SeoEntry[] = [
+    { path: "/", seo: page({ title: "Copy of Klant", wfPage: "p1", jsonLd: [{ valid: true, types: ["Organization"] }] }) },
+    { path: "/over", seo: page({ title: "Over ons | Klant", description: "Over.", wfPage: "p2" }) },
+  ];
+  const drafts = seoDrafts(entries, { ...CTX, sitemap: { ...CTX.sitemap, paths: ["/", "/over"] } });
+  const copy = drafts.find((d) => d.draft.key === "copy");
+  assert.equal(copy?.draft.hint, "hoog");
+  assert.deepEqual(copy?.pages, ["/"]);
+});
+
 test("seoDrafts: CMS-pagina's met dezelfde titel maar niet het hele template = dubbele titel", () => {
   const entries: SeoEntry[] = [
     { path: "/blog/a", seo: page({ title: "Zelfde | Klant", wfPage: "pb", ogImage: "a.png", description: "A" }) },

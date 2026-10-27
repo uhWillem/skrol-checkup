@@ -48,7 +48,7 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.5: bijges
 | `fonts` | Fonts: fonts van Google Fonts (midden), fonts in TTF, OTF of EOT (laag), en een body met de standaardtekst van Webflow (Arial 14/20). | midden / laag |
 | `heading-style` | Global Heading Tags: koppen zonder class met de standaardgrootte van Webflow (bv. h2 32/36 px). | midden |
 | `input-style` | Custom Inputs and Form Fields: formuliervelden met de standaardstijl van Webflow. | midden |
-| `seo-title` | When It's a New Site - SEO Title & Description: geen titel (hoog), dezelfde titel op meerdere pagina's (midden), langer dan 60 tekens (laag), en korte titels zonder merknaam die nog de paginanaam van Webflow lijken ("na te kijken"). | hoog / midden / laag |
+| `seo-title` | When It's a New Site - SEO Title & Description: geen titel of een titel met "Copy of" (hoog), dezelfde titel op meerdere pagina's (midden), langer dan 60 tekens (laag), en korte titels zonder merknaam die nog de paginanaam van Webflow lijken ("na te kijken"). | hoog / midden / laag |
 | `seo-description` | Idem voor de meta description: ontbrekend, dubbel, langer dan 160 tekens. | midden / laag |
 | `cms-seo` | Dynamic SEO Titles, Descriptions and OG Images: alle items van een CMS-template met dezelfde titel of description (niet aan een veld gekoppeld), of zonder; geen OG-afbeelding, of overal dezelfde ("na te kijken"). | hoog / midden / laag |
 | `schema` | Schema Markup: geen JSON-LD op de homepage (midden), ongeldige JSON-LD (hoog), een FAQ-blok zonder FAQPage-schema ("na te kijken"). | midden |
