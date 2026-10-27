@@ -4,14 +4,20 @@ import type { Config } from "./config.js";
 import { guardedContext, launchChromium } from "./browser.js";
 import { isLikelyHtml, normalizeDomain, normalizeLinkUrl, normalizePageUrl, pathOf, readSitemap } from "./discover.js";
 import { checkLink, fetchWithGuard, mapLimit, type LinkStatus } from "./links.js";
-import { layoutDrafts, overflowDrafts, pageDrafts, type Draft } from "./checks.js";
+import { fontDrafts, hoverDraft, layoutDrafts, overflowDrafts, pageDrafts, styleDefaultDrafts, type Draft } from "./checks.js";
+import { navigationDrafts } from "./navigation.js";
 import {
   AUTO_SCROLL,
   COLLECT_PAGE_DATA,
+  hoverSignatureScript,
+  LIST_HOVER_TARGETS,
   MARK_PAIRS,
   MEASURE_LAYOUT,
   MEASURE_OVERFLOW,
+  STYLE_DEFAULTS,
+  type HoverTarget,
   type RawLayout,
+  type RawStyleDefaults,
   type RawLink,
   type RawOverflow,
   type RawPageData,
@@ -79,6 +85,31 @@ class FindingSet {
   }
 }
 
+/** Hoeveel nieuwe soorten links en knoppen per pagina op hover getest worden. */
+const HOVER_PER_PAGE = 10;
+
+/**
+ * Verandert er iets aan het element (of zijn ::before/::after en afstammelingen) als de muis erover gaat?
+ * null: kon niet getest worden, bv. omdat er een pop-up over het element ligt.
+ */
+async function hoverChanges(page: Page, selector: string): Promise<boolean | null> {
+  const locator = page.locator(selector).first();
+  try {
+    await locator.scrollIntoViewIfNeeded({ timeout: 2_000 });
+    await page.mouse.move(1, 1);
+    await page.waitForTimeout(250);
+    const before = await page.evaluate(hoverSignatureScript(selector));
+    if (before === null) return null;
+    await locator.hover({ timeout: 2_000 });
+    await page.waitForTimeout(450);
+    const after = await page.evaluate(hoverSignatureScript(selector));
+    await page.mouse.move(1, 1);
+    return before !== after;
+  } catch {
+    return null;
+  }
+}
+
 async function settle(page: Page): Promise<void> {
   await page.waitForLoadState("networkidle", { timeout: 3_000 }).catch(() => undefined);
 }
@@ -104,6 +135,9 @@ export async function runCheckup(
   const pages: PageResult[] = [];
   const pageStatus = new Map<string, number | null>();
   const occurrences: LinkOccurrence[] = [];
+  const fontRequests = new Map<string, string>();
+  const hoverDone = new Set<string>();
+  const hoverAttempts = new Map<string, number>();
 
   onProgress({ pagesDone: 0, pagesFound: 1, phase: "sitemap lezen" });
   const sitemap = await readSitemap(origin, async (url) => {
@@ -152,6 +186,10 @@ export async function runCheckup(
     const visit = async (url: string): Promise<void> => {
       const path = pathOf(url);
       const page = await context.newPage();
+      page.on("response", (res) => {
+        const u = res.url();
+        if ((res.request().resourceType() === "font" || /\/\/fonts\.googleapis\.com\//i.test(u)) && !fontRequests.has(u)) fontRequests.set(u, path);
+      });
       try {
         await page.setViewportSize(config.viewports[0]);
         let status: number | null = null;
@@ -181,6 +219,28 @@ export async function runCheckup(
           return;
         }
         for (const draft of pageDrafts(data, path, { onWebflowIo })) findings.add(draft, path);
+
+        // Stijl en hover, op de brede viewport.
+        try {
+          const styles = (await page.evaluate(STYLE_DEFAULTS)) as RawStyleDefaults;
+          for (const draft of styleDefaultDrafts(styles)) findings.add(draft, path);
+          const targets = (await page.evaluate(LIST_HOVER_TARGETS)) as HoverTarget[];
+          let tested = 0;
+          for (const target of targets) {
+            if (tested >= HOVER_PER_PAGE) break;
+            const attempts = hoverAttempts.get(target.component) ?? 0;
+            if (hoverDone.has(target.component) || attempts >= 3) continue;
+            hoverAttempts.set(target.component, attempts + 1);
+            const changed = await hoverChanges(page, target.selector);
+            if (changed === null) continue;
+            hoverDone.add(target.component);
+            tested++;
+            if (!changed) findings.add(hoverDraft(target), path);
+          }
+          await page.evaluate("window.scrollTo(0, 0)");
+        } catch (e) {
+          result.analysisError = (e as Error).message.split("\n")[0];
+        }
 
         // Een fout in de lay-outmetingen mag de rest van de pagina niet tegenhouden.
         try {
@@ -236,6 +296,14 @@ export async function runCheckup(
       }
     };
     await Promise.all(Array.from({ length: config.pageConcurrency }, worker));
+
+    onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "navigatie controleren" });
+    try {
+      for (const draft of await navigationDrafts(context, startUrl, config.pageTimeoutMs)) findings.add(draft, pathOf(startUrl));
+    } catch (e) {
+      const start = pages.find((p) => p.url === startUrl);
+      if (start) start.analysisError = `navigatie: ${(e as Error).message.split("\n")[0]}`;
+    }
     await context.close();
   } finally {
     await browser.close();
@@ -245,6 +313,8 @@ export async function runCheckup(
   if (!startPage || startPage.error || startPage.status === null || startPage.status >= 400) {
     throw new Error(`Startpagina niet bereikbaar: ${startPage?.error ?? `HTTP ${startPage?.status}`}`);
   }
+
+  for (const { draft, page } of fontDrafts(fontRequests)) findings.add(draft, page);
 
   onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "links controleren" });
   await checkAllLinks(occurrences, origin, liveDomain, pageStatus, config, guard, findings);

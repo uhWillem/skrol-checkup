@@ -21,7 +21,7 @@ Je voert de check-up uit met de tools van de Skrol-browsertool (`start_checkup`,
 ## Regels voor het rapport
 
 - Elke bug in het rapport komt uit een bevinding van de tool, of uit een screenshot die je zelf bekeek met `get_screenshot`. Verzin geen bugs en vul niets aan uit eigen veronderstellingen.
-- Het rapport is ingedeeld per soort fout (Inhoud, Responsive, Links, Formulieren, SEO, Afbeeldingen en stijl, CMS, Projectinstellingen), met een code per bug (I1, R2, …), met de prioriteit als bolletje: 🔴 hoog, 🟠 midden, 🟡 laag.
+- Het rapport is ingedeeld per soort fout (Inhoud, Responsive, Links, Formulieren, SEO, Navigatie en logo, Afbeeldingen en stijl, CMS, Projectinstellingen), met een code per bug (I1, R2, …), met de prioriteit als bolletje: 🔴 hoog, 🟠 midden, 🟡 laag.
 - Neem de prioriteit van de tool over (`hint`). Wijk enkel af als het bewijs duidelijk anders zegt, en zeg dan waarom. De regels staan in [references/prioriteiten.md](references/prioriteiten.md).
 - Bevindingen met `label: "na te kijken"` krijgen het witte bolletje ⚪ en staan onderaan hun soort. Presenteer ze nooit als zekere bug, behalve lay-outbevindingen die je op een screenshot bevestigd hebt (stap 5).
 - Een bevinding met meerdere pagina's is één bug. Noem de eerste pagina's en het totaal (`pageCount`).

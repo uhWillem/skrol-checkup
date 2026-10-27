@@ -20,6 +20,11 @@
     .wazig { width: 300px; height: 300px; display: block; }
     .scherp { width: 150px; height: 150px; display: block; object-fit: cover; }
     .marquee_track { display: flex; overflow: hidden; width: 200px; white-space: nowrap; }
+    @font-face { font-family: "Oud"; src: url("/fonts/oud.ttf") format("truetype"); }
+    .oud-font { font-family: "Oud", sans-serif; }
+    .kaart { width: 220px; }
+    .samenvatting { margin: 0; line-height: 20px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .kaart-tag { margin: 0; line-height: 20px; }
   </style>
 </head>
 <body>
@@ -40,6 +45,11 @@
   <img class="uitgerekt" src="/img/300x300.png" alt="Uitgerekt">
   <img class="wazig" src="/img/100x100.png" alt="Wazig">
   <img class="scherp" src="/img/600x400.png" alt="Scherp">
+  <p class="oud-font">Tekst in een oud fontformaat</p>
+  <div class="kaart">
+    <p class="samenvatting">Deze samenvatting is veel langer dan twee regels en wordt daarom netjes afgekort met puntjes, zodat de verborgen regels niet over de tag eronder vallen.</p>
+    <p class="kaart-tag">Tag onder de kaart</p>
+  </div>
   <div class="marquee_track"><span>Logo een</span><span>Logo twee</span><span>Logo drie</span><span>Logo vier</span></div>
 </body>
 </html>

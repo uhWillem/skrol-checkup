@@ -35,6 +35,17 @@ export const CHECKS = {
   textOutside: { id: "text-outside", item: "Check on All Devices and Small Laptops", category: "Usability and Design", hint: "midden" },
   imageQuality: { id: "image-quality", item: "Blurry Images", category: "Usability and Design", hint: "midden" },
   imageTextOrder: { id: "image-text-order", item: "Image + Text", category: "Usability and Design", hint: "midden" },
+  // Navigatie en logo (één keer per site, op de startpagina).
+  navSticky: { id: "nav-sticky", item: "Navigation", category: "Usability and Design", hint: "midden" },
+  navScrollLock: { id: "nav-scroll-lock", item: "Navigation Scroll", category: "Usability and Design", hint: "midden" },
+  navMenuFit: { id: "nav-menu-fit", item: "Nav Menu Scroll", category: "Usability and Design", hint: "hoog" },
+  logoLink: { id: "logo-link", item: "Logo Link", category: "Logo", hint: "midden" },
+  logoFormat: { id: "logo-format", item: "Logo Size", category: "Logo", hint: "laag" },
+  // Stijl.
+  hoverState: { id: "hover-state", item: "Hover States", category: "Usability and Design", hint: "laag" },
+  fonts: { id: "fonts", item: "Fonts", category: "Style Guide", hint: "midden" },
+  headingStyle: { id: "heading-style", item: "Global Heading Tags", category: "Style Guide", hint: "midden" },
+  inputStyle: { id: "input-style", item: "Custom Inputs and Form Fields", category: "Style Guide", hint: "midden" },
 } as const satisfies Record<string, CheckInfo>;
 
 export interface Finding {

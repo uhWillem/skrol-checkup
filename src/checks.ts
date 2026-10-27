@@ -2,7 +2,7 @@
 // dezelfde sleutel op meerdere pagina's wordt in de runner samengevoegd tot één bevinding.
 
 import { CHECKS, type CheckInfo, type Finding } from "./types.js";
-import type { RawForm, RawLayout, RawOverflow, RawPageData } from "./page-scripts.js";
+import type { HoverTarget, RawForm, RawLayout, RawOverflow, RawPageData, RawStyleDefaults } from "./page-scripts.js";
 
 export interface Draft extends Omit<Finding, "id" | "pages" | "browser" | "check" | "item" | "category" | "hint"> {
   info: CheckInfo;
@@ -120,7 +120,7 @@ function imageChecks(data: RawPageData): Draft[] {
 }
 
 const CONTENT_MESSAGES: Record<string, string> = {
-  lorem: "Lorem ipsum-tekst op de pagina.",
+  lorem: "Opvultekst (lorem ipsum of Latijnse dummytekst) op de pagina.",
   "default-div": "Webflow-standaardtekst \"This is some text inside of a div block.\"",
   "default-heading": "Heading met de standaardtekst \"Heading\".",
   "placeholder-image": "Webflow-placeholderafbeelding in plaats van een echte afbeelding.",
@@ -337,7 +337,7 @@ export function layoutDrafts(measurements: Array<{ width: number; l: RawLayout }
           info: CHECKS.imageQuality,
           key: `blurry|${component}`,
           element: img.selector,
-          message: `Afbeelding wordt ${img.scale}× vergroot op ${widths.join(", ")} px (bron ${img.natural[0]} px breed, getoond op ${img.rendered[0]} px) en is daardoor wazig.`,
+          message: `Afbeelding wordt ${img.scale}× vergroot op ${widths.join(", ")} px en is daardoor wazig: bron ${img.natural.join("×")}, getoond in een vak van ${img.rendered.join("×")}${img.objectFit === "cover" ? " (object-fit cover: bijgesneden en vergroot)" : ""}.`,
           evidence: { problem: "blurry", viewports: widths, src: img.src, natural: img.natural, rendered: img.rendered, scale: img.scale },
         }));
       }
@@ -360,4 +360,109 @@ export function layoutDrafts(measurements: Array<{ width: number; l: RawLayout }
     const sorted = [...widths].sort((a, b) => b - a);
     return { ...make(sorted), viewport: Math.min(...sorted) };
   });
+}
+
+/** Standaardstijlen uit webflow.css: font-size en line-height per kop, en het standaard invoerveld. */
+const WEBFLOW_HEADINGS: Record<string, [string, string]> = {
+  h1: ["38px", "44px"],
+  h2: ["32px", "36px"],
+  h3: ["24px", "30px"],
+  h4: ["18px", "24px"],
+  h5: ["14px", "20px"],
+  h6: ["12px", "18px"],
+};
+
+/** Koppen, invoervelden en de body die nog exact de standaardstijl van Webflow hebben. Eén bevinding per soort, over de hele site. */
+export function styleDefaultDrafts(raw: RawStyleDefaults): Draft[] {
+  const drafts: Draft[] = [];
+  for (const [level, h] of Object.entries(raw.headings)) {
+    const def = WEBFLOW_HEADINGS[level];
+    if (def && h.fontSize === def[0] && h.lineHeight === def[1]) {
+      drafts.push({
+        info: CHECKS.headingStyle,
+        key: `heading|${level}`,
+        element: h.selector,
+        message: `Een ${level} zonder class heeft nog de standaardstijl van Webflow (${def[0]}/${def[1]}), bv. "${h.text}". Stel de globale ${level}-stijl in.`,
+        evidence: { level, fontSize: h.fontSize, lineHeight: h.lineHeight, text: h.text },
+      });
+    }
+  }
+  const i = raw.input;
+  if (
+    i &&
+    i.height === "38px" &&
+    i.paddingTop === "8px" &&
+    i.paddingLeft === "12px" &&
+    i.fontSize === "14px" &&
+    i.borderTopWidth === "1px" &&
+    i.borderTopColor === "rgb(204, 204, 204)" &&
+    i.backgroundColor === "rgb(255, 255, 255)"
+  ) {
+    drafts.push({
+      info: CHECKS.inputStyle,
+      key: "input",
+      element: i.selector,
+      message: "Formuliervelden hebben nog de standaardstijl van Webflow (38 px hoog, grijze rand van 1 px, 14 px tekst).",
+      evidence: { ...i },
+    });
+  }
+  const b = raw.body;
+  if (/^arial\b/i.test(b.fontFamily) && b.fontSize === "14px" && b.lineHeight === "20px") {
+    drafts.push({
+      info: CHECKS.fonts,
+      key: "default-body",
+      message: "De body gebruikt nog de standaardtekst van Webflow (Arial, 14/20 px).",
+      evidence: { ...b },
+    });
+  }
+  return drafts;
+}
+
+/** Fonts van Google Fonts en fonts in een oud formaat, over de hele site. */
+export function fontDrafts(requests: Map<string, string>): Array<{ draft: Draft; page: string }> {
+  const out: Array<{ draft: Draft; page: string }> = [];
+  const google = [...requests.entries()].filter(([url]) => /\/\/fonts\.(googleapis|gstatic)\.com\//i.test(url));
+  if (google.length > 0) {
+    const families = new Set<string>();
+    for (const [url] of google) {
+      for (const m of url.matchAll(/family=([^&]+)/gi)) {
+        for (const f of decodeURIComponent(m[1]).split("|")) families.add(f.replace(/\+/g, " ").split(":")[0]);
+      }
+    }
+    out.push({
+      page: google[0][1],
+      draft: {
+        info: CHECKS.fonts,
+        key: "google",
+        message: `Fonts worden van Google Fonts geladen${families.size ? ` (${[...families].join(", ")})` : ""}. Upload ze als eigen font in Webflow (WOFF2): sneller, en de bezoeker hoeft niet met Google te verbinden.`,
+        evidence: { families: [...families], urls: google.map(([u]) => u).slice(0, 5) },
+      },
+    });
+  }
+  const legacy = [...requests.entries()].filter(([url]) => /\.(ttf|otf|eot)(\?|#|$)/i.test(url));
+  if (legacy.length > 0) {
+    out.push({
+      page: legacy[0][1],
+      draft: {
+        info: CHECKS.fonts,
+        key: "format",
+        hint: "laag",
+        message: `${legacy.length} font(s) in TTF, OTF of EOT. WOFF2 is veel kleiner en laadt sneller.`,
+        evidence: { urls: legacy.map(([u]) => u).slice(0, 5) },
+      },
+    });
+  }
+  return out;
+}
+
+/** Bevinding voor een link of knop die er bij hover hetzelfde uitziet. */
+export function hoverDraft(target: HoverTarget): Draft {
+  const what = target.kind === "knop" ? "Knop" : target.kind === "navigatielink" ? "Link in de navigatie" : "Link in de footer";
+  return {
+    info: CHECKS.hoverState,
+    key: target.component,
+    element: target.selector,
+    message: `${what} verandert niet bij hover${target.text ? `: "${target.text}"` : ""}. Geldt voor elke ${target.kind} van dit type.`,
+    evidence: { kind: target.kind, text: target.text, component: target.component },
+  };
 }

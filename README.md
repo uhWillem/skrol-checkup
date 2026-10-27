@@ -2,7 +2,7 @@
 
 MCP-server voor de Webflow check-up bot van Skrol. De server crawlt een site in een headless Chromium, voert vaste controles uit uit de pre-launch checklist, en geeft de bevindingen aan Claude. Er zit geen AI in de server: dezelfde site geeft elke keer dezelfde bevindingen. Claude beoordeelt en schrijft het rapport.
 
-Zie het technisch plan voor de volledige architectuur. Dit is versie 0.3: de eerste versie, bijgestuurd na de eerste echte check-up (in4care), met lay-outcontroles en screenshots.
+Zie het technisch plan voor de volledige architectuur. Dit is versie 0.4: bijgestuurd na de eerste echte check-up (in4care), met lay-outcontroles, screenshots, navigatie, hoverstijlen, fonts en standaardstijlen van Webflow.
 
 ## Tools
 
@@ -24,7 +24,7 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.3: de eer
 | `heading-structure` | Heading Structure: overgeslagen niveaus. | laag |
 | `horizontal-scroll` | Horizontal Scroll: de pagina scrolt horizontaal op een van de viewports. Overloop die verborgen wordt door overflow op html of body: "na te kijken". | hoog |
 | `image-alt` | Image Alt Texts: geen alt-attribuut, een bestandsnaam als alt, of een link met enkel een afbeelding zonder alt (de link heeft dan geen naam). Lege alt op andere zichtbare afbeeldingen: "na te kijken". Eén bevinding per soort afbeelding (bv. het logo in de navigatie), met alle pagina's. | midden / laag |
-| `missing-content` | Missing Content: lorem ipsum, Webflow-standaardteksten, de placeholderafbeelding van Webflow. Geüploade afbeeldingen met "placeholder" of "dummy" in de bestandsnaam: "na te kijken". | hoog |
+| `missing-content` | Missing Content: lorem ipsum en Latijnse dummytekst zoals Webflow die in CMS-items zet (ook zonder de woorden "lorem ipsum"), Webflow-standaardteksten, de placeholderafbeelding van Webflow. Geüploade afbeeldingen met "placeholder" of "dummy" in de bestandsnaam: "na te kijken". | hoog |
 | `test-page` | Missing Content: pagina's met test, copy, kopie, dummy of untitled in het adres, bv. testitems uit het CMS of een vergeten kopie. Altijd "na te kijken". | midden |
 | `form-success-message` | Form Success Message: standaardtekst van Webflow. | hoog |
 | `form-error-message` | Form Error Message: standaardtekst van Webflow. | hoog |
@@ -39,6 +39,15 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.3: de eer
 | `text-outside` | Check on All Devices: tekst die buiten een knop, tag of badge loopt. "Na te kijken". | midden |
 | `image-quality` | Blurry Images: afbeeldingen die meer dan 1,25× vergroot worden (wazig) of uitgerekt zijn omdat object-fit ontbreekt. SVG's tellen niet. | midden |
 | `image-text-order` | Image + Text: een beeld en een tekstblok die naast elkaar staan, en op gsm (tot 480 px) met de tekst boven het beeld. "Na te kijken". | midden |
+| `nav-sticky` | Navigation: na 800 px scrollen staat de navigatie niet meer bovenaan ("na te kijken"), of ze staat er zonder achtergrond. Op de startpagina. | midden |
+| `nav-scroll-lock` | Navigation Scroll: met het gsm-menu open scrolt de pagina erachter mee (390 × 800). | midden |
+| `nav-menu-fit` | Nav Menu Scroll: op een gsm in liggende stand (740 × 360) vallen links van het menu onder het scherm en het menu scrolt niet. | hoog |
+| `logo-link` | Logo Link: het logo in de navigatie of de footer linkt niet naar de homepage. | midden |
+| `logo-format` | Logo Size: het logo is geen SVG. | laag |
+| `hover-state` | Hover States: links in de navigatie en de footer, en knoppen, die er bij hover hetzelfde uitzien (ook ::before, ::after en wat erin zit). Eén test per soort link of knop. | laag |
+| `fonts` | Fonts: fonts van Google Fonts (midden), fonts in TTF, OTF of EOT (laag), en een body met de standaardtekst van Webflow (Arial 14/20). | midden / laag |
+| `heading-style` | Global Heading Tags: koppen zonder class met de standaardgrootte van Webflow (bv. h2 32/36 px). | midden |
+| `input-style` | Custom Inputs and Form Fields: formuliervelden met de standaardstijl van Webflow. | midden |
 
 Afbeeldingen in de Webflow-badge en kaarttegels tellen niet mee voor alt-teksten, net als een lege alt in een link die al tekst heeft (bv. een pijltje naast "Lees meer").
 
@@ -93,7 +102,7 @@ In `skill/webflow-checkup/` staat de skill die Claude vertelt hoe het de tools g
 
 Uit het technisch plan, in volgorde:
 
-1. Overige browsercontroles uit de checklist-mapping: navigatie (blijft bovenaan, menu op gsm), hoverstijlen, fonts, robots.txt, sitemap, schema, GTM en de andere punten met "Browsertool".
+1. Overige browsercontroles uit de checklist-mapping: SEO-titels en -descriptions, paginastructuur, schema, robots.txt, sitemap, standaarddomein en redirects, target en rel op externe links, eigen formuliervalidatie, publicatie-instellingen, GTM, interactiesnelheid, hoogte van afbeeldingen.
 2. Firefox en WebKit, Lighthouse.
 3. Webflow-lezer (Data API v2 met een token met enkel leesrechten): SEO-velden, CMS-velden en -items, slugs, paginanamen, tijdzone.
 4. Authenticatie (OAuth in plaats van een API-sleutel in de URL-instellingen).

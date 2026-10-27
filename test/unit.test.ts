@@ -2,7 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isPrivateIp, matchesDomain, UrlGuard } from "../src/url-guard.js";
 import { normalizeDomain, normalizePageUrl, readSitemap } from "../src/discover.js";
-import { componentOf, inputIssues, isFilenameLike, layoutDrafts, overflowDrafts, pageDrafts, testPageWord } from "../src/checks.js";
+import {
+  componentOf,
+  fontDrafts,
+  inputIssues,
+  isFilenameLike,
+  layoutDrafts,
+  overflowDrafts,
+  pageDrafts,
+  styleDefaultDrafts,
+  testPageWord,
+} from "../src/checks.js";
 import type { RawLayout, RawPageData } from "../src/page-scripts.js";
 import { authorized } from "../src/server.js";
 
@@ -142,6 +152,38 @@ test("layoutDrafts: één bevinding per onderdeel met alle breedtes; volgorde en
   assert.equal(overlap[0].key, "overlap|div.kaart > h3|div.kaart > p");
   const order = drafts.filter((d) => d.info.id === "image-text-order");
   assert.deepEqual(order.map((d) => d.evidence?.viewports), [[390]], "992 px telt niet als mobiel");
+});
+
+test("styleDefaultDrafts: koppen, velden en body met de standaardstijl van Webflow", () => {
+  const drafts = styleDefaultDrafts({
+    headings: {
+      h2: { fontSize: "32px", lineHeight: "36px", selector: "div.text-rich-text > h2", text: "Titel" },
+      h3: { fontSize: "28px", lineHeight: "34px", selector: "h3", text: "Eigen stijl" },
+    },
+    input: {
+      height: "38px", paddingTop: "8px", paddingLeft: "12px", fontSize: "14px",
+      borderTopWidth: "1px", borderTopColor: "rgb(204, 204, 204)", backgroundColor: "rgb(255, 255, 255)", selector: "input.w-input",
+    },
+    body: { fontFamily: "Arial, \"Helvetica Neue\", Helvetica, sans-serif", fontSize: "14px", lineHeight: "20px" },
+  });
+  assert.deepEqual(drafts.map((d) => `${d.info.id}|${d.key}`).sort(), ["fonts|default-body", "heading-style|heading|h2", "input-style|input"]);
+});
+
+test("fontDrafts: Google Fonts en oude formaten", () => {
+  const drafts = fontDrafts(
+    new Map([
+      ["https://fonts.googleapis.com/css?family=Inter:400,700|Space+Grotesk:500", "/"],
+      ["https://fonts.gstatic.com/s/inter/v12/abc.woff2", "/"],
+      ["https://cdn.prod.website-files.com/x/oud.otf", "/over"],
+      ["https://cdn.prod.website-files.com/x/nieuw.woff2", "/over"],
+    ]),
+  );
+  const google = drafts.find((d) => d.draft.key === "google")!;
+  assert.deepEqual(google.draft.evidence?.families, ["Inter", "Space Grotesk"]);
+  const format = drafts.find((d) => d.draft.key === "format")!;
+  assert.equal(format.page, "/over");
+  assert.equal(format.draft.hint, "laag");
+  assert.equal(drafts.length, 2);
 });
 
 test("authorized: API-sleutel via header of Bearer", () => {

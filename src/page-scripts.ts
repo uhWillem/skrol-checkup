@@ -144,13 +144,31 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
     };
   });
 
+  // Woorden uit lorem ipsum en de opvultekst die Webflow in CMS-items zet. Een tekst telt als opvultekst
+  // als minstens de helft van de woorden hieruit komt en er minstens 4 verschillende in staan.
+  const LOREM = new Set(("lorem ipsum dolor sit amet consectetur adipiscing elit sed eiusmod tempor incididunt ut labore et dolore " +
+    "aliqua enim ad minim veniam quis nostrud exercitation ullamco laboris nisi aliquip ex ea commodo consequat duis aute irure " +
+    "reprehenderit voluptate velit esse cillum eu fugiat nulla pariatur excepteur sint occaecat cupidatat non proident sunt culpa " +
+    "qui officia deserunt mollit id est laborum vestibulum pellentesque tincidunt aliquam malesuada fringilla suspendisse viverra " +
+    "ultricies imperdiet habitasse faucibus vulputate tristique senectus posuere ornare blandit placerat mattis porttitor bibendum " +
+    "eleifend sagittis scelerisque lacinia pharetra volutpat molestie sodales mauris arcu nisl tellus tortor urna diam quisque " +
+    "ligula felis montes etiam risus donec augue fusce fames habitant purus nunc odio morbi neque egestas gravida auctor accumsan " +
+    "aenean elementum rhoncus lectus varius nibh dapibus sapien hendrerit euismod condimentum dictum semper eget ultrices iaculis " +
+    "rutrum congue convallis facilisis lobortis luctus maecenas nullam phasellus praesent quam sollicitudin vehicula venenatis " +
+    "vivamus vitae nec vel ac at in mi leo metus nisi sem ante justo erat lacus libero orci turpis velit massa aliquet").split(" "));
+  const isPseudoLatin = (text) => {
+    const words = text.toLowerCase().match(/[a-z]+/g) || [];
+    if (words.length < 6) return false;
+    const hits = words.filter((w) => LOREM.has(w));
+    return hits.length / words.length >= 0.5 && new Set(hits).size >= 4;
+  };
   const textHits = [];
   const leafish = [...document.body.querySelectorAll("p, span, div, h1, h2, h3, h4, h5, h6, li, a, label, blockquote, figcaption, td, th, strong, em")];
   for (const el of leafish) {
     const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(" ");
     const text = clean(own);
     if (!text) continue;
-    if (/lorem ipsum|dolor sit amet/i.test(text)) textHits.push({ kind: "lorem", text: text.slice(0, 80), visible: isVisible(el), selector: selectorOf(el) });
+    if (/lorem ipsum|dolor sit amet/i.test(text) || isPseudoLatin(text)) textHits.push({ kind: "lorem", text: text.slice(0, 80), visible: isVisible(el), selector: selectorOf(el) });
     else if (text === "This is some text inside of a div block.") textHits.push({ kind: "default-div", text, visible: isVisible(el), selector: selectorOf(el) });
     else if (/^H[1-6]$/.test(el.tagName) && text === "Heading") textHits.push({ kind: "default-heading", text, visible: isVisible(el), selector: selectorOf(el) });
   }
@@ -380,7 +398,26 @@ export const MEASURE_LAYOUT = String.raw`(() => {
     return n;
   };
 
-  // Tekstregels per blok, in paginacoördinaten.
+  const clips = (s) => s.overflowX === "hidden" || s.overflowX === "clip" || s.overflowY === "hidden" || s.overflowY === "clip";
+  // Zichtbaar vak van het dichtste element met overflow hidden, in paginacoördinaten (of null).
+  const clipBoxes = new Map();
+  const clipBoxOf = (el) => {
+    if (clipBoxes.has(el)) return clipBoxes.get(el);
+    let box = null;
+    let n = el;
+    for (let d = 0; n && n !== document.body && d < 8; d++, n = n.parentElement) {
+      if (clips(cs(n))) {
+        const r = n.getBoundingClientRect();
+        const l = r.left + sx + n.clientLeft, t = r.top + sy + n.clientTop;
+        box = { l, t, r: l + n.clientWidth, b: t + n.clientHeight };
+        break;
+      }
+    }
+    clipBoxes.set(el, box);
+    return box;
+  };
+
+  // Tekstregels per blok, in paginacoördinaten: rects zoals ze lopen, visible enkel het zichtbare deel.
   const owners = new Map();
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   const range = document.createRange();
@@ -400,13 +437,19 @@ export const MEASURE_LAYOUT = String.raw`(() => {
     nodes++;
     const owner = blockOf(el);
     let entry = owners.get(owner);
-    if (!entry) { entry = { owner, id: owners.size, rects: [] }; owners.set(owner, entry); }
-    for (const r of rects) entry.rects.push({ l: r.left + sx, t: r.top + sy, r: r.right + sx, b: r.bottom + sy });
+    if (!entry) { entry = { owner, id: owners.size, rects: [], visible: [] }; owners.set(owner, entry); }
+    const box = clipBoxOf(el);
+    for (const r of rects) {
+      const rect = { l: r.left + sx, t: r.top + sy, r: r.right + sx, b: r.bottom + sy };
+      entry.rects.push(rect);
+      const v = box ? { l: Math.max(rect.l, box.l), t: Math.max(rect.t, box.t), r: Math.min(rect.r, box.r), b: Math.min(rect.b, box.b) } : rect;
+      if (v.r - v.l >= 4 && v.b - v.t >= 4) entry.visible.push(v);
+    }
   }
 
   // 1. Tekst die over andere tekst valt.
   const all = [];
-  for (const entry of owners.values()) for (const r of entry.rects) all.push({ l: r.l, t: r.t, r: r.r, b: r.b, e: entry });
+  for (const entry of owners.values()) for (const r of entry.visible) all.push({ l: r.l, t: r.t, r: r.r, b: r.b, e: entry });
   all.sort((a, b) => a.t - b.t);
   const pairs = new Map();
   outer: for (let i = 0; i < all.length; i++) {
@@ -431,7 +474,6 @@ export const MEASURE_LAYOUT = String.raw`(() => {
   }));
 
   // 2. Tekst die deels wegvalt in een vak met overflow hidden.
-  const clips = (s) => s.overflowX === "hidden" || s.overflowX === "clip" || s.overflowY === "hidden" || s.overflowY === "clip";
   const truncates = (s) => s.textOverflow === "ellipsis" || (s.webkitLineClamp && s.webkitLineClamp !== "none");
   const clipOf = (el) => {
     let n = el;
@@ -533,4 +575,190 @@ export const MEASURE_LAYOUT = String.raw`(() => {
   }
 
   return { overlaps, clipped, outside, images, textAbove };
+})()`;
+
+export interface HoverTarget {
+  selector: string;
+  /** Selector zonder volgnummers: één test per soort link of knop. */
+  component: string;
+  kind: "knop" | "navigatielink" | "footerlink";
+  text: string;
+}
+
+/** Links in de navigatie en de footer, en knoppen: de elementen die een hoverstijl horen te hebben. */
+export const LIST_HOVER_TARGETS = String.raw`(() => {
+  ${HELPERS}
+  const BTN = /(^|[\s_-])(button|btn)([\s_-]|$)/i;
+  const out = [];
+  const seen = new Set();
+  for (const el of document.querySelectorAll("a[href], button, input[type='submit']")) {
+    if (el.closest(".w-webflow-badge")) continue;
+    const inNav = !!el.closest("nav, header, .w-nav");
+    const inFooter = !inNav && !!el.closest("footer, [class*='footer']");
+    const isButton = el.tagName === "BUTTON" || el.tagName === "INPUT" || BTN.test(el.getAttribute("class") || "");
+    if (!inNav && !inFooter && !isButton) continue;
+    if (!isVisible(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 10 || r.height < 10) continue;
+    const selector = selectorOf(el);
+    const component = selector.replace(/:nth-of-type\(\d+\)/g, "");
+    if (seen.has(component)) continue;
+    seen.add(component);
+    out.push({
+      selector, component,
+      kind: isButton ? "knop" : inNav ? "navigatielink" : "footerlink",
+      text: clean(el.textContent || el.value).slice(0, 40),
+    });
+    if (out.length >= 40) break;
+  }
+  return out;
+})()`;
+
+/** Computed styles van een element, zijn ::before/::after en zijn eerste afstammelingen, als één tekst. */
+export function hoverSignatureScript(selector: string): string {
+  return `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return null;
+    const props = ["color", "backgroundColor", "backgroundImage", "borderTopColor", "borderRightColor", "borderBottomColor",
+      "borderLeftColor", "textDecorationLine", "textDecorationColor", "opacity", "transform", "boxShadow", "filter",
+      "fontWeight", "letterSpacing", "outlineStyle", "width", "height"];
+    const sig = (node, pseudo) => {
+      const s = getComputedStyle(node, pseudo);
+      return props.map((p) => s[p]).join("|") + (pseudo ? "|" + s.content : "");
+    };
+    const nodes = [el, ...[...el.querySelectorAll("*")].slice(0, 8)];
+    return nodes.map((n) => sig(n, null) + "#" + sig(n, "::before") + "#" + sig(n, "::after")).join("~");
+  })()`;
+}
+
+export interface RawStyleDefaults {
+  headings: Record<string, { fontSize: string; lineHeight: string; selector: string; text: string }>;
+  input: null | {
+    height: string;
+    paddingTop: string;
+    paddingLeft: string;
+    fontSize: string;
+    borderTopWidth: string;
+    borderTopColor: string;
+    backgroundColor: string;
+    selector: string;
+  };
+  body: { fontFamily: string; fontSize: string; lineHeight: string };
+}
+
+/** Stijlen om te vergelijken met de standaardwaarden van Webflow: koppen zonder class, formuliervelden en de body. */
+export const STYLE_DEFAULTS = String.raw`(() => {
+  ${HELPERS}
+  const headings = {};
+  for (const level of [1, 2, 3, 4, 5, 6]) {
+    // Een kop met een eigen class krijgt zijn stijl van die class; enkel koppen zonder class tonen de globale stijl.
+    const el = [...document.querySelectorAll("h" + level)].find((h) => !(h.getAttribute("class") || "").trim() && isVisible(h));
+    if (!el) continue;
+    const s = getComputedStyle(el);
+    headings["h" + level] = { fontSize: s.fontSize, lineHeight: s.lineHeight, selector: selectorOf(el), text: clean(el.textContent).slice(0, 40) };
+  }
+  const field = [...document.querySelectorAll(".w-input, .w-select")].find(isVisible);
+  let input = null;
+  if (field) {
+    const s = getComputedStyle(field);
+    input = {
+      height: s.height, paddingTop: s.paddingTop, paddingLeft: s.paddingLeft, fontSize: s.fontSize,
+      borderTopWidth: s.borderTopWidth, borderTopColor: s.borderTopColor, backgroundColor: s.backgroundColor,
+      selector: selectorOf(field),
+    };
+  }
+  const b = getComputedStyle(document.body);
+  return { headings, input, body: { fontFamily: b.fontFamily, fontSize: b.fontSize, lineHeight: b.lineHeight } };
+})()`;
+
+export interface RawNavSticky {
+  selector: string;
+  skipped: boolean;
+  visibleAtTop?: boolean;
+  opaque?: boolean;
+}
+
+/** Scrolt 800 px en kijkt of de navigatie bovenaan blijft met een achtergrond die niet doorschijnt. */
+export const NAV_STICKY = String.raw`(async () => {
+  ${HELPERS}
+  const nav = document.querySelector(".w-nav") || document.querySelector("header") || document.querySelector("nav");
+  if (!nav) return null;
+  const selector = selectorOf(nav);
+  if (document.documentElement.scrollHeight < window.innerHeight + 800) return { selector, skipped: true };
+  window.scrollTo(0, 800);
+  await new Promise((r) => setTimeout(r, 500));
+  const r = nav.getBoundingClientRect();
+  const ns = getComputedStyle(nav);
+  const visibleAtTop = r.top <= 2 && r.bottom > 10 && ns.display !== "none" && ns.visibility !== "hidden" && Number.parseFloat(ns.opacity) > 0.5;
+  const alpha = (c) => {
+    const m = /rgba?\(([^)]+)\)/.exec(c || "");
+    if (!m) return c === "transparent" ? 0 : 1;
+    const p = m[1].split(/[\s,\/]+/).filter(Boolean);
+    return p.length >= 4 ? Number.parseFloat(p[3]) : 1;
+  };
+  const paints = (el) => {
+    const s = getComputedStyle(el);
+    return alpha(s.backgroundColor) >= 0.9 || s.backgroundImage !== "none" || (s.backdropFilter && s.backdropFilter !== "none");
+  };
+  let opaque = paints(nav);
+  if (!opaque) {
+    for (const c of nav.querySelectorAll(":scope > *, :scope > * > *")) {
+      const cr = c.getBoundingClientRect();
+      if (cr.width >= r.width * 0.9 && cr.height >= r.height * 0.6 && paints(c)) { opaque = true; break; }
+    }
+  }
+  window.scrollTo(0, 0);
+  await new Promise((r) => setTimeout(r, 300));
+  return { selector, skipped: false, visibleAtTop, opaque };
+})()`;
+
+export interface RawMenuState {
+  open: boolean;
+  linkCount?: number;
+  hidden?: number;
+  scrollable?: boolean;
+  fixed?: boolean;
+  pageCanScroll?: boolean;
+  selector?: string;
+}
+
+/** Toestand van het geopende gsm-menu van Webflow: hoeveel links buiten beeld vallen en of je ze kunt bereiken. */
+export const MENU_STATE = String.raw`(() => {
+  ${HELPERS}
+  const menu = document.querySelector(".w-nav-menu[data-nav-menu-open]") || document.querySelector(".w-nav-overlay .w-nav-menu");
+  if (!menu || !isVisible(menu)) return { open: false };
+  const links = [...menu.querySelectorAll("a, button")].filter((l) => isVisible(l));
+  const hidden = links.filter((l) => l.getBoundingClientRect().bottom > window.innerHeight + 1).length;
+  let scrollable = false;
+  let fixed = false;
+  for (let n = menu; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+    const s = getComputedStyle(n);
+    if ((s.overflowY === "auto" || s.overflowY === "scroll") && n.scrollHeight > n.clientHeight + 1) scrollable = true;
+    if (s.position === "fixed" || s.position === "sticky") fixed = true;
+  }
+  const locked = (el) => ["hidden", "clip"].includes(getComputedStyle(el).overflowY);
+  const pageCanScroll = document.documentElement.scrollHeight > window.innerHeight + 1 && !locked(document.body) && !locked(document.documentElement);
+  return { open: true, linkCount: links.length, hidden, scrollable, fixed, pageCanScroll, selector: selectorOf(menu) };
+})()`;
+
+export interface RawLogo {
+  nav: null | { href: string; selector: string; src: string | null; svg: boolean };
+  footer: null | { href: string; selector: string; src: string | null; svg: boolean };
+}
+
+/** Het logo in de navigatie en in de footer: waar het naartoe linkt en of het een SVG is. */
+export const LOGO_INFO = String.raw`(() => {
+  ${HELPERS}
+  const info = (a) => {
+    if (!a) return null;
+    const img = a.querySelector("img");
+    return { href: a.href, selector: selectorOf(a), src: img ? (img.getAttribute("src") || img.currentSrc || null) : null, svg: !!a.querySelector("svg") };
+  };
+  const nav = document.querySelector(".w-nav") || document.querySelector("header") || document.querySelector("nav");
+  const navLogo = document.querySelector(".w-nav-brand") || (nav ? [...nav.querySelectorAll("a")].find((a) => a.querySelector("img, svg")) : null);
+  const footer = document.querySelector("footer") || document.querySelector("[class*='footer']");
+  // In de footer staan vaak ook iconen van sociale media: enkel een link die naar een logo ruikt telt.
+  const looksLikeLogo = (a) => /logo|brand/i.test((a.getAttribute("class") || "") + " " + ((a.querySelector("img") || {}).getAttribute ? (a.querySelector("img").getAttribute("src") || "") + " " + (a.querySelector("img").getAttribute("class") || "") : ""));
+  const footerLogo = footer ? [...footer.querySelectorAll("a")].find((a) => a.querySelector("img, svg") && looksLikeLogo(a)) : null;
+  return { nav: info(navLogo), footer: info(footerLogo) };
 })()`;

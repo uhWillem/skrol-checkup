@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8"><title>Navigatie fout</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    .w-nav { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 10; }
+    .w-nav-menu { display: flex; gap: 16px; }
+    .w-nav-button { display: none; width: 40px; height: 40px; background: #000; cursor: pointer; }
+    a:hover { color: #c00; }
+    .lang { height: 3000px; padding: 16px; }
+    .w-nav { position: relative; }
+    @media (max-width: 767px) {
+      .w-nav-menu { display: none; }
+      .w-nav-button { display: block; }
+      .w-nav-menu[data-nav-menu-open] { display: block; position: fixed; top: 60px; left: 0; right: 0; background: #fff; }
+      .w-nav-menu[data-nav-menu-open] a { display: block; padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="w-nav">
+    <a href="/over" class="w-nav-brand"><img src="/logo.png" alt="Klant" width="80" height="30"></a>
+    <nav class="w-nav-menu">
+      <a href="/over">Link 1</a>
+      <a href="/over">Link 2</a>
+      <a href="/over">Link 3</a>
+      <a href="/over">Link 4</a>
+      <a href="/over">Link 5</a>
+      <a href="/over">Link 6</a>
+      <a href="/over">Link 7</a>
+      <a href="/over">Link 8</a>
+    </nav>
+    <div class="w-nav-button" role="button" aria-label="Menu"></div>
+  </div>
+  <main class="lang"><h1>Navigatie fout</h1><p>Een lange pagina om te scrollen.</p></main>
+  <script>
+    const button = document.querySelector(".w-nav-button");
+    const menu = document.querySelector(".w-nav-menu");
+    button.addEventListener("click", () => {
+      const open = menu.hasAttribute("data-nav-menu-open");
+      if (open) menu.removeAttribute("data-nav-menu-open"); else menu.setAttribute("data-nav-menu-open", "");
+      document.body.classList.toggle("menu-open", !open);
+    });
+  </script>
+</body>
+</html>

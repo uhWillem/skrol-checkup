@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8"><title>Navigatie goed</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    .w-nav { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 10; }
+    .w-nav-menu { display: flex; gap: 16px; }
+    .w-nav-button { display: none; width: 40px; height: 40px; background: #000; cursor: pointer; }
+    a:hover { color: #c00; }
+    .lang { height: 3000px; padding: 16px; }
+    .w-nav { position: sticky; top: 0; background: #fff; }
+    @media (max-width: 767px) {
+      .w-nav-menu { display: none; }
+      .w-nav-button { display: block; }
+      .w-nav-menu[data-nav-menu-open] { display: block; position: fixed; top: 60px; left: 0; right: 0; bottom: 0; background: #fff; overflow-y: auto; }
+      .w-nav-menu[data-nav-menu-open] a { display: block; padding: 20px 16px; }
+    }
+    body.menu-open { overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div class="w-nav">
+    <a href="/" class="w-nav-brand"><img src="/logo.svg" alt="Klant, naar de homepage" width="80" height="30"></a>
+    <nav class="w-nav-menu">
+      <a href="/over">Link 1</a>
+      <a href="/over">Link 2</a>
+      <a href="/over">Link 3</a>
+      <a href="/over">Link 4</a>
+      <a href="/over">Link 5</a>
+      <a href="/over">Link 6</a>
+      <a href="/over">Link 7</a>
+      <a href="/over">Link 8</a>
+    </nav>
+    <div class="w-nav-button" role="button" aria-label="Menu"></div>
+  </div>
+  <main class="lang"><h1>Navigatie goed</h1><p>Een lange pagina om te scrollen.</p></main>
+  <footer><a href="/" class="footer-logo"><img src="/logo.svg" alt="Klant" width="80" height="30"></a></footer>
+  <script>
+    const button = document.querySelector(".w-nav-button");
+    const menu = document.querySelector(".w-nav-menu");
+    button.addEventListener("click", () => {
+      const open = menu.hasAttribute("data-nav-menu-open");
+      if (open) menu.removeAttribute("data-nav-menu-open"); else menu.setAttribute("data-nav-menu-open", "");
+      document.body.classList.toggle("menu-open", !open);
+    });
+  </script>
+</body>
+</html>

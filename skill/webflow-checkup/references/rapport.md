@@ -47,7 +47,8 @@ Elke bevinding gaat naar de soort van haar controle (`check`):
 | Links | L | `broken-links`, `empty-links` |
 | Formulieren | F | `form-success-message`, `form-error-message`, `form-name`, `form-inputs` |
 | SEO | S | `heading-1`, `heading-structure`, `image-alt` |
-| Afbeeldingen en stijl | A | `image-quality` |
+| Navigatie en logo | N | `nav-sticky`, `nav-scroll-lock`, `nav-menu-fit`, `logo-link`, `logo-format` |
+| Afbeeldingen en stijl | A | `image-quality`, `hover-state`, `fonts`, `heading-style`, `input-style` |
 | CMS | C | `empty-state` |
 | Projectinstellingen | P | `webflow-badge`, `favicon`, `lang` |
 

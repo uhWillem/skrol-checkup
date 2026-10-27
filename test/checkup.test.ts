@@ -66,11 +66,14 @@ test("ontbrekende inhoud: lorem ipsum, standaardteksten en placeholders", () => 
   const upload = content.find((f) => f.message.includes("bestandsnaam"));
   assert.equal(upload?.label, "na te kijken");
   assert.match(JSON.stringify(upload?.evidence), /placeholder-p-500\.jpg/);
-  assert.ok(kinds.some((m) => m.includes("Lorem ipsum")));
+  assert.ok(kinds.some((m) => m.includes("Opvultekst")));
   assert.ok(kinds.some((m) => m.includes("This is some text inside of a div block.")));
   assert.ok(kinds.some((m) => m.includes("\"Heading\"")));
   assert.ok(kinds.some((m) => m.includes("placeholder")));
-  assert.equal(find("missing-content", "/cms").length, 1);
+  const cms = find("missing-content", "/cms").map((f) => f.message);
+  assert.equal(cms.length, 2, "placeholder en Latijnse dummytekst zonder 'lorem ipsum'");
+  assert.ok(cms.some((m) => m.includes("Opvultekst")));
+  assert.equal(find("missing-content", "/").length, 0, "Nederlandse tekst is geen opvultekst");
 });
 
 test("horizontale scroll op mobiel, en verborgen overloop als na te kijken", () => {
@@ -150,6 +153,29 @@ test("lay-out: overlap, afgesneden tekst, tekst buiten knop, afbeeldingen en vol
   assert.equal(order.length, 1, "enkel het blok met de tekst links");
   assert.match(order[0].message, /Tekst eerst Dit blok/);
   assert.deepEqual(order[0].evidence?.viewports, [390, 360]);
+});
+
+test("hover: knoppen en links zonder hoverstijl, links met hoverstijl niet", () => {
+  const hover = find("hover-state");
+  const pages = hover.map((f) => f.pages[0]).sort();
+  assert.deepEqual(pages, ["/formulier", "/fout"], hover.map((f) => `${f.pages} ${f.message}`).join("\n"));
+  assert.match(String(hover.find((f) => f.pages[0] === "/fout")?.message), /Knop zonder hover/);
+});
+
+test("fonts: oud formaat gemeld; stijlen van Webflow niet aanwezig op de testsite", () => {
+  const fonts = find("fonts");
+  assert.equal(fonts.length, 1, fonts.map((f) => f.message).join("\n"));
+  assert.equal(fonts[0].hint, "laag");
+  assert.deepEqual(fonts[0].pages, ["/layout"]);
+  assert.match(JSON.stringify(fonts[0].evidence), /oud\.ttf/);
+  assert.equal(find("heading-style").length, 0);
+  assert.equal(find("input-style").length, 0);
+});
+
+test("navigatie en logo op de startpagina: in orde", () => {
+  for (const check of ["nav-sticky", "nav-scroll-lock", "nav-menu-fit", "logo-link", "logo-format"]) {
+    assert.equal(find(check).length, 0, check);
+  }
 });
 
 test("lege collectie met standaardtekst", () => {
