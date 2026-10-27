@@ -39,7 +39,7 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.4: bijges
 | `text-outside` | Check on All Devices: tekst die buiten een knop, tag of badge loopt. "Na te kijken". | midden |
 | `image-quality` | Blurry Images: afbeeldingen die meer dan 1,25× vergroot worden (wazig) of uitgerekt zijn omdat object-fit ontbreekt. SVG's tellen niet. | midden |
 | `image-text-order` | Image + Text: een beeld en een tekstblok die naast elkaar staan, en op gsm (tot 480 px) met de tekst boven het beeld. "Na te kijken". | midden |
-| `nav-sticky` | Navigation: na 800 px scrollen staat de navigatie niet meer bovenaan ("na te kijken"), of ze staat er zonder achtergrond. Op de startpagina. | midden |
+| `nav-sticky` | Navigation: na 800 px scrollen staat de navigatie niet meer bovenaan en komt ze ook niet terug als je 200 px naar boven scrolt ("na te kijken"), of ze staat er zonder achtergrond. Een navigatie die verdwijnt bij naar beneden scrollen en terugkomt bij naar boven scrollen is in orde. Op de startpagina. | midden |
 | `nav-scroll-lock` | Navigation Scroll: met het gsm-menu open scrolt de pagina erachter mee (390 × 800). | midden |
 | `nav-menu-fit` | Nav Menu Scroll: op een gsm in liggende stand (740 × 360) vallen links van het menu onder het scherm en het menu scrolt niet. | hoog |
 | `logo-link` | Logo Link: het logo in de navigatie of de footer linkt niet naar de homepage. | midden |
