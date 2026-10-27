@@ -254,6 +254,7 @@ export function sameClock(a: string, b: string): boolean {
 /** Velden die een klant leeg kan laten, zodat de template het element moet verbergen. */
 const EMPTYABLE = new Set(["Image", "MultiImage", "Link", "VideoLink", "Email", "Phone", "File", "PlainText", "RichText", "Reference", "MultiReference", "Option", "DateTime"]);
 const TEXT_TYPES = new Set(["PlainText", "RichText"]);
+const ALT_FIELD = /\balt\b|alt-?tekst|alt text/i;
 
 function isEmpty(value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -326,7 +327,8 @@ export function webflowDrafts(data: WebflowData, ctx: WebflowContext): SiteDraft
       },
       badNames.map(pathOfPage),
     );
-    const drafts = statics.filter((p) => p.draft);
+    // Een stijlgids blijft bewust uit de publicatie.
+    const drafts = statics.filter((p) => p.draft && !/style\s*guide|stijlgids/i.test(p.title!));
     add(
       {
         info: CHECKS.draftPages,
@@ -439,14 +441,30 @@ export function webflowDrafts(data: WebflowData, ctx: WebflowContext): SiteDraft
           [anchor],
         );
       }
-      if (unused.length > 0) {
+      // Een alt-tekstveld dat nergens ingevuld is, betekent lege alt-teksten op de CMS-pagina's.
+      const altFields = unused.filter((u) => ALT_FIELD.test(u));
+      if (altFields.length > 0) {
+        add(
+          {
+            info: CHECKS.cmsFields,
+            key: `alt|${collection.id}`,
+            hint: "midden",
+            message: `Collectie "${name}": ${altFields.map((u) => `"${u}"`).join(", ")} ${altFields.length === 1 ? "is" : "zijn"} in geen enkel item ingevuld, dus de afbeeldingen op de CMS-pagina's hebben een lege alt-tekst.`,
+            evidence: { collection: name, fields: altFields, items: active.length },
+          },
+          [anchor],
+        );
+      }
+      const otherUnused = unused.filter((u) => !ALT_FIELD.test(u));
+      if (otherUnused.length > 0) {
+        const unused = otherUnused;
         add(
           {
             info: CHECKS.cmsFields,
             key: `unused|${collection.id}`,
             hint: "laag",
             label: "na te kijken",
-            message: `Collectie "${name}": ${unused.length === 1 ? "het veld" : "de velden"} ${unused.map((u) => `"${u}"`).join(", ")} ${unused.length === 1 ? "wordt" : "worden"} in geen enkel item ingevuld. Nog nodig?`,
+            message: `Collectie "${name}": ${unused.length === 1 ? "het veld" : "de velden"} ${unused.map((u) => `"${u}"`).join(", ")} ${unused.length === 1 ? "wordt" : "worden"} in geen enkel item ingevuld: invullen, of verwijderen als ${unused.length === 1 ? "het" : "ze"} niet meer nodig ${unused.length === 1 ? "is" : "zijn"}.`,
             evidence: { collection: name, fields: unused },
           },
           [anchor],

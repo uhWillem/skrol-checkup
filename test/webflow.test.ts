@@ -16,6 +16,7 @@ const PAGES = [
   { id: "p3", title: "Onze Diensten", slug: "diensten", publishedPath: "/diensten", draft: true },
   { id: "p4", title: "Blog Posts Template", slug: "detail_blog", collectionId: "col-blog" },
   { id: "p5", title: "oud", slug: "oud", archived: true },
+  { id: "p6", title: "Style Guide", slug: "style-guide", publishedPath: "/style-guide", draft: true },
 ];
 const FIELDS = [
   { id: "f1", slug: "name", displayName: "Name", type: "PlainText", isRequired: true, isEditable: true },
@@ -24,6 +25,7 @@ const FIELDS = [
   { id: "f4", slug: "afbeelding", displayName: "Afbeelding", type: "Image", isRequired: false, isEditable: true },
   { id: "f5", slug: "video", displayName: "Video", type: "VideoLink", isRequired: false, isEditable: true },
   { id: "f6", slug: "uitgelicht", displayName: "Uitgelicht", type: "Switch", isRequired: false, isEditable: true },
+  { id: "f7", slug: "alt", displayName: "Afbeelding Alt-tekst", type: "PlainText", isRequired: false, isEditable: true, helpText: "Beschrijf de afbeelding." },
 ];
 const img = { fileId: "x", url: "https://cdn.example/a.png", alt: null };
 const BLOG_ITEMS = [
@@ -90,11 +92,11 @@ test("readWebflow: kiest de site aan de shortName, pagineert en wacht bij een 42
   const data = await readWebflow(config, "klant-staging.webflow.io");
   assert.ok(!("skipped" in data), JSON.stringify(data));
   assert.equal(data.site.id, "site1");
-  assert.equal(data.pages?.length, 5);
+  assert.equal(data.pages?.length, 6);
   assert.deepEqual(data.collections?.map((c) => [c.collection.displayName, c.items.length]), [["Blogposts", 5], ["Team", 1]]);
   assert.deepEqual(data.errors, []);
   assert.ok(calls.filter((c) => c.startsWith("/v2/sites/site1/collections")).length === 2, "na de 429 opnieuw geprobeerd");
-  assert.deepEqual(webflowSummary(data), { site: "Klant", timeZone: "America/New_York", pages: 4, collections: 2, items: 5 });
+  assert.deepEqual(webflowSummary(data), { site: "Klant", timeZone: "America/New_York", pages: 5, collections: 2, items: 5 });
 });
 
 test("readWebflow: zonder token, met een ander domein of een fout token wordt het overgeslagen", async () => {
@@ -119,6 +121,7 @@ test("webflowDrafts: tijdzone, paginanamen, drafts, helpteksten, aantal items, o
   const byKey = new Map(drafts.map((d) => [`${d.draft.info.id}|${d.draft.key}`, d]));
   assert.deepEqual([...byKey.keys()].sort(), [
     "cms-content|col-blog",
+    "cms-fields|alt|col-blog",
     "cms-fields|help|col-blog",
     "cms-fields|unused|col-blog",
     "cms-items|col-team",
@@ -136,7 +139,9 @@ test("webflowDrafts: tijdzone, paginanamen, drafts, helpteksten, aantal items, o
   // Afbeelding leeg in 1 van 4 actieve items; video in geen enkel item ingevuld; een switch telt niet.
   assert.match(byKey.get("conditional-visibility|col-blog")!.draft.message, /"Afbeelding" is leeg in 1 van de 4 items/);
   assert.match(byKey.get("cms-fields|unused|col-blog")!.draft.message, /"Video"/);
-  assert.match(byKey.get("cms-fields|help|col-blog")!.draft.message, /3 van de 4 velden/);
+  assert.match(byKey.get("cms-fields|help|col-blog")!.draft.message, /3 van de 5 velden/);
+  assert.equal(byKey.get("cms-fields|alt|col-blog")!.draft.hint, "midden");
+  assert.match(byKey.get("cms-fields|alt|col-blog")!.draft.message, /lege alt-tekst/);
   assert.match(byKey.get("cms-items|col-team")!.draft.message, /1 item;/);
   // Bevindingen over een collectie zonder CMS-pagina's hangen aan de startpagina.
   assert.deepEqual(byKey.get("cms-items|col-team")!.pages, ["/"]);
@@ -159,7 +164,7 @@ test("check-up met de Webflow-lezer: bevindingen en samenvatting", async () => {
     const config = await testConfig({ WEBFLOW_TOKENS: TOKEN, WEBFLOW_API_BASE: base });
     const guard = new UrlGuard(config.allowedDomains, config.allowPrivateNetworks);
     const result = await runCheckup(`${site.origin}/`, config, guard, undefined, { oldSiteCandidates: ["http://127.0.0.1:1/"] });
-    assert.deepEqual(result.summary.webflow, { site: "Klant", timeZone: "America/New_York", pages: 4, collections: 2, items: 5 });
+    assert.deepEqual(result.summary.webflow, { site: "Klant", timeZone: "America/New_York", pages: 5, collections: 2, items: 5 });
     assert.ok(!(result.summary.skipped ?? []).some((s) => s.check === "timezone"));
     const zone = result.findings.find((f) => f.check === "timezone");
     assert.match(zone?.message ?? "", /klant\.be wijst op Europe\/Brussels/);
