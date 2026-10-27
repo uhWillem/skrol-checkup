@@ -31,6 +31,12 @@ Gebruik exact deze opbouw. Laat een soort weg als ze leeg is, maar houd "Niet au
 
 (zelfde tabel, met R1, R2, …)
 
+### R2 · Secties met de tekst boven de afbeelding op gsm
+
+| Sectie | Pagina's |
+| --- | --- |
+| "Onze diensten" (.services_component) | [/](https://klant.webflow.io/), [/over](https://klant.webflow.io/over) |
+
 ## Niet automatisch gecontroleerd
 
 - [ ] {checklist-punt} ({categorie})
@@ -64,8 +70,9 @@ Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij
 - Bewijs: één korte regel uit `evidence` of `element`, of "screenshot op 390 px" als je de fout op een screenshot zag. Geen volledige JSON.
 - Voorstel: wat het team in Webflow moet aanpassen, in één zin. Bij ⚪: wat het team moet nakijken en waarom het onzeker is.
 - Claude kan fixen: "Ja" enkel voor de soorten fixes uit SKILL.md, anders "Nee".
-- Lange lijsten (bv. alle kapotte links) komen in een opsomming onder de tabel van hun soort, met het nummer van de bug erbij.
+- Details die niet in één cel passen (alle kapotte links, alle secties, oude paden) komen direct onder de tabel van hun soort: per bug een kop `### L1 · korte titel` en daaronder een kleine tabel met één rij per link, sectie of pagina. Onder de kop mag hoogstens één korte alinea uitleg staan. Geen losse notities of opsommingen onder de tabellen, en dezelfde gegevens nooit in twee detailtabellen.
+- Een bug die na controle geschrapt is, vermeld je in één zin in de inleiding van haar soort.
 - Stopte de check-up aan het vangnet (`stoppedAtMaxPages`), zeg dat bovenaan het rapport.
 - Migratie: staat er `migration` in de samenvatting, zet dan bovenaan de SEO-soort één zin met de cijfers, bv. "Van de 120 pagina's van de oude site (www.klant.be) bestaan er 80 op hetzelfde pad, 25 hebben een redirect en 15 geven een 404." Met `truncated: true` zeg je dat enkel de eerste 300 pagina's vergeleken zijn. Staan de migratiecontroles in `skipped`, zet de reden dan bij Redirects, Page and CMS Slugs en When Migrating op de afvinklijst.
-- Bij `redirects` en `slugs` zijn de pagina's oude paden: zet ze als gewone tekst, en de volledige lijst (uit `evidence`) als opsomming onder de tabel. Bij `slugs` toon je per pad waar de redirect naartoe gaat.
-- Bij `seo-migration` toon je onder de tabel per pagina de oude en de nieuwe titel (of description), de eerste tien en het totaal.
+- Bij `redirects` en `slugs` zijn de pagina's oude paden: zet ze als gewone tekst. De volledige lijst (uit `evidence`) komt in de detailtabel van de bug, gegroepeerd per sectie van de oude site (kolommen Groep, Aantal, Oude paden). Bij `slugs` toon je per pad waar de redirect naartoe gaat (kolommen Oud pad, Redirect naar).
+- Bij `seo-migration` toon je in de detailtabel per pagina de oude en de nieuwe titel (of description), de eerste tien en het totaal.
