@@ -24,8 +24,8 @@ Gebruik exact deze opbouw. Laat een soort weg als ze leeg is, maar houd "Niet au
 
 | # | Prio | Pagina | Bug | Bewijs | Voorstel | Claude kan fixen |
 | --- | --- | --- | --- | --- | --- | --- |
-| I1 | 🔴 | /diensten (+3) | Lorem ipsum in de intro | `.hero_text` p: "Lorem ipsum dolor…" | Echte tekst plaatsen | Nee |
-| I2 | ⚪ | /blog (+4) | Afbeelding met "placeholder" in de bestandsnaam | 6adb…_placeholder.svg | Nakijken: echte afbeelding of bewust gekozen? | Nee |
+| I1 | 🔴 | [/diensten](https://klant.webflow.io/diensten) (+3) | Lorem ipsum in de intro | `.hero_text` p: "Lorem ipsum dolor…" | Echte tekst plaatsen | Nee |
+| I2 | ⚪ | [/blog](https://klant.webflow.io/blog) (+4) | Afbeelding met "placeholder" in de bestandsnaam | 6adb…_placeholder.svg | Nakijken: echte afbeelding of bewust gekozen? | Nee |
 
 ## Responsive (R)
 
@@ -58,7 +58,8 @@ Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij
 - Volgorde van de soorten: zoals in de tabel hierboven. Binnen een soort: eerst 🔴, dan 🟠, dan 🟡, en ⚪ onderaan.
 - Elke bug krijgt de code van haar soort en een volgnummer binnen die soort (I1, I2, R1, …), zodat het team kan zeggen "fix I3, R1 en L2". Een bug die later bijkomt krijgt het volgende nummer van haar soort; de andere codes blijven gelijk.
 - Prio: het bolletje van de `hint` van de tool. Een bevinding met `label: "na te kijken"` krijgt ⚪, tenzij je ze op een screenshot bevestigd hebt; dan krijgt ze het bolletje van haar `hint`.
-- Pagina: het pad van de eerste pagina, en `(+n)` als de bug op meer pagina's staat.
+- Pagina: het pad van de eerste pagina als link naar die pagina op de gecontroleerde site (start-URL + pad), en `(+n)` als de bug op meer pagina's staat.
+- Links: elk pad van een pagina in het rapport is een link, ook in Bewijs en in de lijsten onder de tabellen. Kapotte externe links, pdf's en links die bots weren zijn ook klikbaar, zodat het team ze meteen kan testen. Oude paden van het live domein (die niet meer bestaan) blijven gewone tekst.
 - Bewijs: één korte regel uit `evidence` of `element`, of "screenshot op 390 px" als je de fout op een screenshot zag. Geen volledige JSON.
 - Voorstel: wat het team in Webflow moet aanpassen, in één zin. Bij ⚪: wat het team moet nakijken en waarom het onzeker is.
 - Claude kan fixen: "Ja" enkel voor de soorten fixes uit SKILL.md, anders "Nee".
