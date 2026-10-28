@@ -7,6 +7,8 @@ description: Voert de pre-launch check-up van een Webflow-site uit met de Skrol-
 
 Je voert de check-up uit met de tools van de Skrol-browsertool (`start_checkup`, `get_checkup_status`, `get_findings`, `list_pages`, `get_screenshot`) en schrijft daarna een bugrapport voor het team van Skrol. Het team beslist wat er gefixt wordt.
 
+Het resultaat is altijd een **doc** (Claude Docs), nooit enkel een antwoord in de chat: het team deelt het rapport, zet er opmerkingen bij en vinkt de afvinklijst af. In de chat zet je enkel een korte samenvatting (aantal bugs per prioriteit, de belangrijkste drie) en de link naar het doc.
+
 ## Werkwijze
 
 1. **URL bepalen.** Gebruik de staging-URL op `.webflow.io` die de gebruiker geeft. Geen URL gekregen? Vraag ernaar. Een live klantdomein werkt enkel als het in de toegestane domeinen van de server staat.
@@ -15,7 +17,7 @@ Je voert de check-up uit met de tools van de Skrol-browsertool (`start_checkup`,
 4. **Bevindingen ophalen.** Haal ze op per prioriteit: eerst `hint: "hoog"`, dan `"midden"`, dan `"laag"`. Volg `next_offset` tot alles binnen is.
 5. **Lay-out nakijken.** Bevindingen van `overlap`, `clipped-text`, `text-outside` en `image-text-order` hebben "na te kijken": de tool meet ze, maar weet niet of het er fout uitziet. Bekijk ze met `get_screenshot` (url = start-URL + pagina, `width` = `viewport` van de bevinding, `selector` = `element`). Zie je de fout op het screenshot, dan is het een zekere bug met als bewijs "screenshot op N px". Zie je ze niet, laat ze dan weg. Zijn er veel van dezelfde soort, bekijk er dan een paar en zeg in het rapport hoeveel je bekeken hebt.
 6. **Pagina's bekijken.** Dit is het checklist-punt "Check on All Devices and Small Laptops". Haal `list_pages` op en bekijk de homepage en één pagina per sectie op 1440, 992 en 390 px; vraag de volgende delen op (`part`) als de pagina langer is. Kijk naar wat de metingen niet zien: elementen die verspringen of verdwijnen, witruimte die niet klopt, afbeeldingen die verkeerd uitgesneden zijn, een menu of footer die niet past. Meld enkel duidelijke fouten, met "screenshot op N px" als bewijs. Houd het bij een twintigtal screenshots. Sla je deze stap over, zet het punt dan op de afvinklijst.
-7. **Rapport schrijven** volgens "Rapportformaat" hieronder, als doc (een Docs-artifact) dat het team kan delen en becommentariëren.
+7. **Rapport schrijven** als doc, volgens "Rapportformaat" hieronder. Maak het doc aan met de titel "Check-up {site} — {datum}" en één blok per soort, open het, en vul daarna soort per soort: de overzichtstabel, dan per soort de inleiding, de tabel en de detailtabellen. Is er geen docs-tool in de chat, maak dan een artifact (een pagina) met dezelfde inhoud. Schrijf het rapport nooit enkel in de chat.
 8. **Fixes** enkel als het team erom vraagt, bv. "fix I3, R1 en L2". Zie "Fixes" hieronder.
 
 ## Regels voor het rapport
