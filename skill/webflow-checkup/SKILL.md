@@ -42,9 +42,11 @@ Fixes en andere aanpassingen lopen via de officiële Webflow-connector, nooit vi
 - Is een wijziging moeilijk terug te draaien (het type van een CMS-veld, de slug van een pagina die al live staat), zeg dat dan vóór je ze uitvoert.
 - Zegt een tool dat de site in de Webflow Designer open moet staan, vraag de gebruiker dan om ze te openen en probeer daarna opnieuw.
 
-Publiceren en verwijderen (pagina's, CMS-items, collecties, assets) doe je enkel als de gebruiker daar uitdrukkelijk om vraagt; "fix I3" is geen vraag om te publiceren. Zeg dan eerst precies wat er gepubliceerd of verwijderd wordt en wacht op een ja. Publiceer standaard enkel naar het staging-domein op `.webflow.io`, naar het live domein enkel als de gebruiker dat met zoveel woorden vraagt.
+Publiceren en verwijderen (pagina's, CMS-items, collecties, assets) doe je enkel als de gebruiker daar uitdrukkelijk om vraagt; "fix I3" is geen vraag om te publiceren. Zeg dan eerst precies wat er gepubliceerd of verwijderd wordt en wacht op een ja.
 
-Na de aanpassingen zeg je per bug wat je gewijzigd hebt, wat nog gepubliceerd moet worden voor het op de site staat, en dat iemand van Skrol het resultaat nakijkt.
+Publiceren mag enkel naar het staging-domein op `.webflow.io`. Naar het live domein (het eigen domein van de klant) publiceer je nooit, ook niet als de gebruiker erom vraagt: dat doet iemand van Skrol zelf in Webflow. Heeft de site een eigen domein, zet CMS-items dan ook niet rechtstreeks live (`publish_collection_items` of de live-varianten van de item-tools), want dan komen ze op het live domein.
+
+Na de aanpassingen zeg je per bug wat je gewijzigd hebt, wat nog gepubliceerd moet worden voor het op de site staat, en dat iemand van Skrol het resultaat nakijkt en naar het live domein publiceert.
 
 Is de Webflow-connector niet beschikbaar in de chat, dan geef je per bug het voorstel tot oplossing, voer je niets uit en zeg je dat de connector nodig is.
 
