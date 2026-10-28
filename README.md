@@ -2,7 +2,7 @@
 
 MCP-server voor de Webflow check-up bot van Skrol. De server crawlt een site in een headless Chromium, voert vaste controles uit uit de pre-launch checklist, en geeft de bevindingen aan Claude. Er zit geen AI in de server: dezelfde site geeft elke keer dezelfde bevindingen. Claude beoordeelt en schrijft het rapport.
 
-Zie het technisch plan voor de volledige architectuur. Dit is versie 0.6: bijgestuurd na de eerste echte check-up (in4care), met lay-outcontroles, screenshots, navigatie, hoverstijlen, fonts, standaardstijlen van Webflow, SEO, een vergelijking met de oude site bij een migratie, en de Webflow-lezer voor het CMS en de projectinstellingen.
+Zie het technisch plan voor de volledige architectuur. Dit is versie 0.7: bijgestuurd na de eerste echte check-up (in4care), met lay-outcontroles, screenshots met een vaste link, navigatie, hoverstijlen, fonts, standaardstijlen van Webflow, SEO, een vergelijking met de oude site bij een migratie, en de Webflow-lezer voor het CMS en de projectinstellingen.
 
 ## Tools
 
@@ -12,7 +12,7 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.6: bijges
 | `get_checkup_status` | Status en voortgang; als de job klaar is, een samenvatting en de lijst gecontroleerde checklist-punten. |
 | `get_findings` | Bevindingen, gesorteerd op prioriteit, te filteren op controle, pagina of prioriteit, per 100. |
 | `list_pages` | Alle gecontroleerde pagina's met statuscode, per sectie (bv. `/blog`). |
-| `get_screenshot` | Screenshot van een pagina op een schermbreedte: de volledige pagina in delen, of het stuk rond een element (`selector`) met het element omkaderd. Zo kijkt Claude lay-outbevindingen na en beoordeelt het pagina's. Screenshots worden niet bewaard. |
+| `get_screenshot` | Screenshot van een pagina op een schermbreedte: de volledige pagina in delen, of het stuk rond een element (`selector`) met het element omkaderd. Zo kijkt Claude lay-outbevindingen na en beoordeelt het pagina's. Elk screenshot krijgt een vaste link (`screenshotUrl`, `/screenshots/<id>.jpg`) die zonder API-sleutel opent, zodat het rapport ernaar kan linken. De id is 24 willekeurige tekens; na `SCREENSHOT_DAYS` dagen (standaard 180) wordt het beeld opgeruimd. |
 
 ## Wat deze versie controleert
 

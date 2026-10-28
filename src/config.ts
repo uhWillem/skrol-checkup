@@ -39,6 +39,10 @@ export interface Config {
   webflowTokens: string[];
   /** Adres van de Webflow API; enkel anders in tests. */
   webflowApiBase: string;
+  /** Publiek adres van de server, bv. https://checkup.skrol.agency; leeg = afgeleid uit de aanvraag. */
+  publicUrl: string;
+  /** Aantal dagen dat screenshots bewaard blijven. */
+  screenshotDays: number;
 }
 
 function list(value: string | undefined, fallback: string[]): string[] {
@@ -82,9 +86,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     linkConcurrency: int(env.LINK_CONCURRENCY, 8),
     maxRedirects: int(env.MAX_REDIRECTS, 5),
     chromiumExecutable: env.CHROMIUM_EXECUTABLE ?? "",
-    userAgent: env.USER_AGENT ?? "SkrolCheckup/0.6 (+https://www.skrol.agency)",
+    userAgent: env.USER_AGENT ?? "SkrolCheckup/0.7 (+https://www.skrol.agency)",
     // Tokens zijn hoofdlettergevoelig: niet door list() halen, dat maakt alles kleine letters.
     webflowTokens: (env.WEBFLOW_TOKENS ?? "").split(",").map((t) => t.trim()).filter(Boolean),
     webflowApiBase: (env.WEBFLOW_API_BASE ?? "https://api.webflow.com").replace(/\/$/, ""),
+    publicUrl: (env.PUBLIC_URL ?? "").replace(/\/$/, ""),
+    screenshotDays: int(env.SCREENSHOT_DAYS, 180),
   };
 }

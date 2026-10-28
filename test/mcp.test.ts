@@ -115,6 +115,17 @@ test("screenshot van de volledige pagina, in delen", async () => {
   assert.equal(meta.part, 1);
   assert.ok(meta.parts >= 1);
   assert.ok(meta.height <= 1800);
+  // Vaste link naar het beeld, die zonder API-sleutel opent.
+  assert.match(meta.screenshotUrl, new RegExp(`^http://127\\.0\\.0\\.1:${mcp.port}/screenshots/[A-Za-z0-9_-]{24}\\.jpg$`));
+  const response = await fetch(meta.screenshotUrl);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/jpeg");
+  const bytes = Buffer.from(await response.arrayBuffer());
+  assert.equal(bytes.toString("base64"), img?.data);
+  const unknown = await fetch(`http://127.0.0.1:${mcp.port}/screenshots/${"a".repeat(24)}.jpg`);
+  assert.equal(unknown.status, 404);
+  const traversal = await fetch(`http://127.0.0.1:${mcp.port}/screenshots/..%2F..%2Fjobs.jpg`);
+  assert.equal(traversal.status, 404);
   await client.close();
 });
 

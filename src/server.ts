@@ -6,6 +6,8 @@ import { JobStore } from "./jobs.js";
 import type { CheckupOptions } from "./runner.js";
 import { createMcpServer, VERSION } from "./mcp.js";
 import { UrlGuard } from "./url-guard.js";
+import { ScreenshotStore } from "./screenshot-store.js";
+import { join } from "node:path";
 
 const MAX_BODY = 1_000_000;
 
@@ -50,6 +52,15 @@ export function authorized(req: IncomingMessage, apiKey: string): boolean {
   return !!bearer && sameSecret(bearer.trim(), apiKey);
 }
 
+/** Publiek adres van de server: PUBLIC_URL, anders afgeleid uit de aanvraag (achter de proxy van Coolify). */
+export function baseUrlOf(req: IncomingMessage, publicUrl: string): string {
+  if (publicUrl) return publicUrl;
+  const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)?.split(",")[0]?.trim();
+  const proto = first(req.headers["x-forwarded-proto"]) || "http";
+  const host = first(req.headers["x-forwarded-host"]) || req.headers.host || "localhost";
+  return `${proto}://${host}`;
+}
+
 function send(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
@@ -59,10 +70,27 @@ export async function startServer(config: Config = loadConfig(), runDefaults: Ch
   const guard = new UrlGuard(config.allowedDomains, config.allowPrivateNetworks);
   const store = new JobStore(config, guard, runDefaults);
   await store.load();
+  const shots = new ScreenshotStore(join(config.dataDir, "screenshots"), config.screenshotDays);
+  void shots.prune();
+  // Eén keer per dag oude screenshots opruimen; de timer houdt het proces niet open.
+  setInterval(() => void shots.prune(), 24 * 60 * 60 * 1000).unref();
 
   const http = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (url.pathname === "/healthz") return send(res, 200, { ok: true, version: VERSION });
+    const shotId = ScreenshotStore.idFromPath(url.pathname);
+    if (shotId && (req.method === "GET" || req.method === "HEAD")) {
+      const image = await shots.read(shotId);
+      if (!image) return send(res, 404, { error: "screenshot niet gevonden of opgeruimd" });
+      res.writeHead(200, {
+        "content-type": "image/jpeg",
+        "content-length": image.length,
+        "cache-control": "private, max-age=86400",
+        "x-robots-tag": "noindex",
+        "x-content-type-options": "nosniff",
+      });
+      return res.end(req.method === "HEAD" ? undefined : image);
+    }
     if (url.pathname !== config.mcpPath) return send(res, 404, { error: "niet gevonden" });
     if (!authorized(req, config.apiKey)) return send(res, 401, { error: "niet geautoriseerd" });
     if (req.method !== "POST") {
@@ -72,7 +100,7 @@ export async function startServer(config: Config = loadConfig(), runDefaults: Ch
     try {
       const body = await readBody(req);
       // Elke aanroep krijgt een eigen server en transport; de jobs leven in de gedeelde store.
-      const server = createMcpServer(store, config, guard);
+      const server = createMcpServer(store, config, guard, shots, baseUrlOf(req, config.publicUrl));
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       res.on("close", () => {
         void transport.close();

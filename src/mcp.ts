@@ -6,8 +6,9 @@ import { CHECKS, type Finding } from "./types.js";
 import type { UrlGuard } from "./url-guard.js";
 import { normalizeDomain } from "./discover.js";
 import { takeScreenshot } from "./screenshot.js";
+import { SCREENSHOT_ROUTE, type ScreenshotStore } from "./screenshot-store.js";
 
-export const VERSION = "0.6.0";
+export const VERSION = "0.7.0";
 const MAX_PAGES_SHOWN = 20;
 
 /** Welke checklist-punten deze versie automatisch controleert; controles die niet gelopen hebben tellen niet mee. */
@@ -30,7 +31,14 @@ function compact(f: Finding) {
   return { ...rest, pages: pages.slice(0, MAX_PAGES_SHOWN), pageCount: pages.length };
 }
 
-export function createMcpServer(store: JobStore, config: Config, guard: UrlGuard): McpServer {
+export function createMcpServer(
+  store: JobStore,
+  config: Config,
+  guard: UrlGuard,
+  shots?: ScreenshotStore,
+  /** Publiek adres van de server, voor de links naar screenshots. */
+  baseUrl = config.publicUrl,
+): McpServer {
   const server = new McpServer({ name: "skrol-checkup", version: VERSION });
 
   server.registerTool(
@@ -159,7 +167,9 @@ export function createMcpServer(store: JobStore, config: Config, guard: UrlGuard
         "Maakt een screenshot van een pagina op een schermbreedte, zodat je de lay-out zelf kunt bekijken. " +
         "Zonder selector: de volledige pagina in delen; het antwoord zegt hoeveel delen er zijn (parts), vraag de rest op met part. " +
         "Met selector (bv. het element uit een bevinding): enkel het stuk rond dat element, met het element roze omkaderd. " +
-        "Gebruik dit om lay-outbevindingen met 'na te kijken' te bevestigen en om pagina's op gsm, tablet en laptop te beoordelen.",
+        "Gebruik dit om lay-outbevindingen met 'na te kijken' te bevestigen en om pagina's op gsm, tablet en laptop te beoordelen. " +
+        `Het antwoord bevat screenshotUrl: een vaste link naar dit beeld die zonder sleutel opent en ${config.screenshotDays} dagen bewaard blijft. ` +
+        "Zet die link in het rapport als bewijs, bv. [screenshot op 390 px](screenshotUrl).",
       inputSchema: {
         url: z.string().url().describe("Volledige URL van de pagina, bv. https://klant.webflow.io/diensten"),
         width: z.number().int().min(320).max(1920).optional().describe("Schermbreedte in px, standaard 1440. Bv. 1440, 992, 768, 390."),
@@ -174,9 +184,17 @@ export function createMcpServer(store: JobStore, config: Config, guard: UrlGuard
       }
       try {
         const { image, meta } = await takeScreenshot({ url, width: width ?? 1440, selector, part }, config, guard);
+        let screenshotUrl: string | undefined;
+        if (shots && baseUrl) {
+          try {
+            screenshotUrl = `${baseUrl}${SCREENSHOT_ROUTE}${await shots.save(image)}.jpg`;
+          } catch {
+            // zonder link: het beeld zelf komt toch mee
+          }
+        }
         return {
           content: [
-            { type: "text" as const, text: JSON.stringify(meta) },
+            { type: "text" as const, text: JSON.stringify(screenshotUrl ? { ...meta, screenshotUrl } : meta) },
             { type: "image" as const, data: image.toString("base64"), mimeType: "image/jpeg" },
           ],
         };
