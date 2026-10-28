@@ -1,6 +1,6 @@
 ---
 name: webflow-checkup
-description: Voert de pre-launch check-up van een Webflow-site uit met de Skrol-browsertool (connector Checkup) en schrijft een bugrapport. Gebruik bij "run check-up op [site]", een QA vóór de lancering, of een vraag om een Webflow-site op bugs te testen.
+description: Voert de pre-launch check-up van een Webflow-site uit met de Skrol-browsertool (connector Checkup) en schrijft een bugrapport als doc. Gebruik bij "run check-up op [site]", een QA vóór de lancering, of een vraag om een Webflow-site op bugs te testen.
 ---
 
 # Webflow check-up
@@ -18,7 +18,7 @@ Het resultaat is altijd een **doc** (Claude Docs), nooit enkel een antwoord in d
 5. **Lay-out nakijken.** Bevindingen van `overlap`, `clipped-text`, `text-outside` en `image-text-order` hebben "na te kijken": de tool meet ze, maar weet niet of het er fout uitziet. Bekijk ze met `get_screenshot` (url = start-URL + pagina, `width` = `viewport` van de bevinding, `selector` = `element`). Zie je de fout op het screenshot, dan is het een zekere bug met als bewijs "screenshot op N px". Zie je ze niet, laat ze dan weg. Zijn er veel van dezelfde soort, bekijk er dan een paar en zeg in het rapport hoeveel je bekeken hebt.
 6. **Pagina's bekijken.** Dit is het checklist-punt "Check on All Devices and Small Laptops". Haal `list_pages` op en bekijk de homepage en één pagina per sectie op 1440, 992 en 390 px; vraag de volgende delen op (`part`) als de pagina langer is. Kijk naar wat de metingen niet zien: elementen die verspringen of verdwijnen, witruimte die niet klopt, afbeeldingen die verkeerd uitgesneden zijn, een menu of footer die niet past. Meld enkel duidelijke fouten, met "screenshot op N px" als bewijs. Houd het bij een twintigtal screenshots. Sla je deze stap over, zet het punt dan op de afvinklijst.
 7. **Rapport schrijven** als doc, volgens "Rapportformaat" hieronder. Maak het doc aan met de titel "Check-up {site} — {datum}" en één blok per soort, open het, en vul daarna soort per soort: de overzichtstabel, dan per soort de inleiding, de tabel en de detailtabellen. Is er geen docs-tool in de chat, maak dan een artifact (een pagina) met dezelfde inhoud. Schrijf het rapport nooit enkel in de chat.
-8. **Fixes** enkel als het team erom vraagt, bv. "fix I3, R1 en L2". Zie "Fixes" hieronder.
+8. **Fixes** en andere aanpassingen in Webflow enkel als de gebruiker erom vraagt, bv. "fix I3, R1 en L2". Zie "Fixes" hieronder.
 
 ## Regels voor het rapport
 
@@ -34,16 +34,17 @@ Het resultaat is altijd een **doc** (Claude Docs), nooit enkel een antwoord in d
 
 ## Fixes
 
-Fixes lopen via de officiële Webflow-connector, nooit via de browsertool. Claude mag enkel deze soorten fixes uitvoeren, één wijziging per goedkeuring:
+Fixes en andere aanpassingen lopen via de officiële Webflow-connector, nooit via de browsertool. Vraagt de gebruiker een aanpassing, dan mag je in principe alles wijzigen wat de connector kan: bv. teksten en elementen, CMS-items en -velden, pagina-instellingen (SEO-titels, descriptions, OG, slugs, schema), alt-teksten, links, headings, classes, stijlen en variabelen, componenten, formulieren, interacties, scripts en custom code.
 
-- SEO-titels, descriptions en OG-velden, en JSON-LD-schema per pagina.
-- Alt-teksten van afbeeldingen.
-- Placeholdertekst in CMS-items en helpteksten bij CMS-velden.
-- Kapotte links, en target en rel op externe links.
-- Heading-niveaus.
-- Namen van classes en kleurvariabelen.
+- Voer enkel uit wat de gebruiker vraagt, bv. "fix I3, R1 en L2" of "vervang de lorem ipsum op /over door deze tekst". Breid de opdracht niet zelf uit; zie je onderweg nog iets, meld het dan.
+- Is de vraag ruim ("fix alle SEO-titels") of raakt ze veel pagina's of items, zet dan eerst kort op een rij wat je gaat wijzigen en wacht op een ja.
+- Inhoud die de klant moet aanleveren (echte teksten, foto's, een logo) verzin je niet: stel een tekst voor en wacht op een ja, of vraag de inhoud.
+- Is een wijziging moeilijk terug te draaien (het type van een CMS-veld, de slug van een pagina die al live staat), zeg dat dan vóór je ze uitvoert.
+- Zegt een tool dat de site in de Webflow Designer open moet staan, vraag de gebruiker dan om ze te openen en probeer daarna opnieuw.
 
-Nooit: de site of CMS-items publiceren (ook niet `publish_collection_items`), iets verwijderen, stijlen of lay-out aanpassen, of scripts wijzigen. Na de fixes zeg je welke bugs aangepakt zijn en dat iemand van Skrol het resultaat nakijkt en publiceert.
+Publiceren en verwijderen (pagina's, CMS-items, collecties, assets) doe je enkel als de gebruiker daar uitdrukkelijk om vraagt; "fix I3" is geen vraag om te publiceren. Zeg dan eerst precies wat er gepubliceerd of verwijderd wordt en wacht op een ja. Publiceer standaard enkel naar het staging-domein op `.webflow.io`, naar het live domein enkel als de gebruiker dat met zoveel woorden vraagt.
+
+Na de aanpassingen zeg je per bug wat je gewijzigd hebt, wat nog gepubliceerd moet worden voor het op de site staat, en dat iemand van Skrol het resultaat nakijkt.
 
 Is de Webflow-connector niet beschikbaar in de chat, dan geef je per bug het voorstel tot oplossing, voer je niets uit en zeg je dat de connector nodig is.
 
@@ -118,7 +119,7 @@ Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij
 - Links: elk pad van een pagina in het rapport is een link, ook in Bewijs en in de lijsten onder de tabellen. Kapotte externe links, pdf's en links die bots weren zijn ook klikbaar, zodat het team ze meteen kan testen. Oude paden van het live domein (die niet meer bestaan) blijven gewone tekst.
 - Bewijs: één korte regel uit `evidence` of `element`, of "screenshot op 390 px" als je de fout op een screenshot zag. Geen volledige JSON.
 - Voorstel: wat het team in Webflow moet aanpassen, in één zin. Bij ⚪: wat het team moet nakijken en waarom het onzeker is.
-- Claude kan fixen: "Ja" enkel voor de soorten fixes uit "Fixes" hierboven, anders "Nee".
+- Claude kan fixen: "Ja" als de fix een aanpassing in Webflow is die Claude via de Webflow-connector kan doen (zie "Fixes"). "Nee" als ze iets buiten Webflow vraagt (DNS, Search Console, een CRM, de oude site) of inhoud die de klant moet aanleveren (echte teksten, een scherpere foto).
 - Details die niet in één cel passen (alle kapotte links, alle secties, oude paden) komen direct onder de tabel van hun soort: per bug een kop `### L1 · korte titel` en daaronder een kleine tabel met één rij per link, sectie of pagina. Onder de kop mag hoogstens één korte alinea uitleg staan. Geen losse notities of opsommingen onder de tabellen, en dezelfde gegevens nooit in twee detailtabellen.
 - Een bug die na controle geschrapt is, vermeld je in één zin in de inleiding van haar soort.
 - Stopte de check-up aan het vangnet (`stoppedAtMaxPages`), zeg dat bovenaan het rapport.
