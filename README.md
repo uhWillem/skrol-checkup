@@ -136,7 +136,9 @@ De tag van de Playwright-image in de `Dockerfile` moet overeenkomen met de versi
 
 ## Skill voor Claude
 
-In `skill/webflow-checkup/` staat de skill die Claude vertelt hoe het de tools gebruikt: de werkwijze, de prioriteitsregels, het rapportformaat en welke fixes Claude mag uitvoeren via de Webflow-connector. `references/checklist.md` bevat alle 74 punten uit de pre-launch checklist; wat niet in `coverage` staat, komt als afvinklijst onderaan het rapport.
+In `skill/webflow-checkup/SKILL.md` staat de skill die Claude vertelt hoe het de tools gebruikt: de werkwijze, de prioriteitsregels, het rapportformaat, de 74 punten van de pre-launch checklist en welke fixes Claude mag uitvoeren via de Webflow-connector. Alles staat in één bestand, zodat de skill in Claude in één keer op te slaan is. Wat niet in `coverage` staat, komt als afvinklijst onderaan het rapport.
+
+Voor een volledige check-up in een gewone chat zijn nodig: de connector naar deze server (Checkup), de skill, en voor fixes de officiële Webflow-connector.
 
 ## Volgende stappen
 

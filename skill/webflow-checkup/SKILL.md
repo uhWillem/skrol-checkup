@@ -1,6 +1,6 @@
 ---
 name: webflow-checkup
-description: Voert de pre-launch check-up van een Webflow-site uit met de Skrol-browsertool en schrijft een bugrapport. Gebruik bij "run check-up op [site]", een QA vóór de lancering, of een vraag om een Webflow-site op bugs te testen.
+description: Voert de pre-launch check-up van een Webflow-site uit met de Skrol-browsertool (connector Checkup) en schrijft een bugrapport. Gebruik bij "run check-up op [site]", een QA vóór de lancering, of een vraag om een Webflow-site op bugs te testen.
 ---
 
 # Webflow check-up
@@ -15,19 +15,19 @@ Je voert de check-up uit met de tools van de Skrol-browsertool (`start_checkup`,
 4. **Bevindingen ophalen.** Haal ze op per prioriteit: eerst `hint: "hoog"`, dan `"midden"`, dan `"laag"`. Volg `next_offset` tot alles binnen is.
 5. **Lay-out nakijken.** Bevindingen van `overlap`, `clipped-text`, `text-outside` en `image-text-order` hebben "na te kijken": de tool meet ze, maar weet niet of het er fout uitziet. Bekijk ze met `get_screenshot` (url = start-URL + pagina, `width` = `viewport` van de bevinding, `selector` = `element`). Zie je de fout op het screenshot, dan is het een zekere bug met als bewijs "screenshot op N px". Zie je ze niet, laat ze dan weg. Zijn er veel van dezelfde soort, bekijk er dan een paar en zeg in het rapport hoeveel je bekeken hebt.
 6. **Pagina's bekijken.** Dit is het checklist-punt "Check on All Devices and Small Laptops". Haal `list_pages` op en bekijk de homepage en één pagina per sectie op 1440, 992 en 390 px; vraag de volgende delen op (`part`) als de pagina langer is. Kijk naar wat de metingen niet zien: elementen die verspringen of verdwijnen, witruimte die niet klopt, afbeeldingen die verkeerd uitgesneden zijn, een menu of footer die niet past. Meld enkel duidelijke fouten, met "screenshot op N px" als bewijs. Houd het bij een twintigtal screenshots. Sla je deze stap over, zet het punt dan op de afvinklijst.
-7. **Rapport schrijven** volgens [references/rapport.md](references/rapport.md).
+7. **Rapport schrijven** volgens "Rapportformaat" hieronder, als doc (een Docs-artifact) dat het team kan delen en becommentariëren.
 8. **Fixes** enkel als het team erom vraagt, bv. "fix I3, R1 en L2". Zie "Fixes" hieronder.
 
 ## Regels voor het rapport
 
 - Elke bug in het rapport komt uit een bevinding van de tool, of uit een screenshot die je zelf bekeek met `get_screenshot`. Verzin geen bugs en vul niets aan uit eigen veronderstellingen.
 - Het rapport is ingedeeld per soort fout (Inhoud, Responsive, Links, Formulieren, SEO, Navigatie en logo, Afbeeldingen en stijl, CMS, Projectinstellingen), met een code per bug (I1, R2, …), met de prioriteit als bolletje: 🔴 hoog, 🟠 midden, 🟡 laag.
-- Neem de prioriteit van de tool over (`hint`). Wijk enkel af als het bewijs duidelijk anders zegt, en zeg dan waarom. De regels staan in [references/prioriteiten.md](references/prioriteiten.md).
+- Neem de prioriteit van de tool over (`hint`). Wijk enkel af als het bewijs duidelijk anders zegt, en zeg dan waarom. Zie "Prioriteiten" hieronder.
 - Bevindingen met `label: "na te kijken"` krijgen het witte bolletje ⚪ en staan onderaan hun soort. Presenteer ze nooit als zekere bug, behalve lay-outbevindingen die je op een screenshot bevestigd hebt (stap 5).
 - Een bevinding met meerdere pagina's is één bug. Noem de eerste pagina's en het totaal (`pageCount`).
 - Gebruik `evidence` om de bug concreet te maken: welk element, welke waarde, welke link.
 - Staat er geen `liveDomain` in de samenvatting, zeg dan bovenaan het rapport dat links naar het live domein als externe links geteld zijn.
-- Punten uit de checklist die niet in `coverage` staan, controleert de tool niet. Zet ze onderaan als afvinklijst ([references/checklist.md](references/checklist.md)).
+- Punten uit de checklist die niet in `coverage` staan, controleert de tool niet. Zet ze onderaan als afvinklijst (zie "Checklist" hieronder).
 - Schrijf in het Nederlands, kort en concreet.
 
 ## Fixes
@@ -43,4 +43,108 @@ Fixes lopen via de officiële Webflow-connector, nooit via de browsertool. Claud
 
 Nooit: de site of CMS-items publiceren (ook niet `publish_collection_items`), iets verwijderen, stijlen of lay-out aanpassen, of scripts wijzigen. Na de fixes zeg je welke bugs aangepakt zijn en dat iemand van Skrol het resultaat nakijkt en publiceert.
 
-Is de Webflow-connector niet beschikbaar, dan geef je per bug het voorstel tot oplossing en voer je niets uit.
+Is de Webflow-connector niet beschikbaar in de chat, dan geef je per bug het voorstel tot oplossing, voer je niets uit en zeg je dat de connector nodig is.
+
+## Rapportformaat
+
+Het rapport is ingedeeld per soort fout. Binnen elke soort staat de prioriteit als gekleurd bolletje:
+
+- 🔴 hoog
+- 🟠 midden
+- 🟡 laag
+- ⚪ na te kijken: de tool kon het niet zeker vaststellen, het team bevestigt of schrapt
+
+Gebruik exact deze opbouw. Laat een soort weg als ze leeg is, maar houd "Niet automatisch gecontroleerd" altijd.
+
+```markdown
+# Check-up {site} — {datum}
+
+{aantal} pagina's gecontroleerd, {aantal} bevindingen van de tool. Gebundeld tot {n} bugs: {n} 🔴 hoog, {n} 🟠 midden, {n} 🟡 laag, en {n} ⚪ om na te kijken.
+{Eén zin met de belangrijkste conclusie, bv. "Twee kapotte interne links en horizontale scroll op mobiel moeten vóór de lancering opgelost worden."}
+
+| Soort | 🔴 | 🟠 | 🟡 | ⚪ |
+| --- | --- | --- | --- | --- |
+| Inhoud (I) | 2 | 0 | 0 | 1 |
+| Responsive (R) | 1 | 1 | 0 | 2 |
+
+## Inhoud (I)
+
+| # | Prio | Pagina | Bug | Bewijs | Voorstel | Claude kan fixen |
+| --- | --- | --- | --- | --- | --- | --- |
+| I1 | 🔴 | [/diensten](https://klant.webflow.io/diensten) (+3) | Lorem ipsum in de intro | `.hero_text` p: "Lorem ipsum dolor…" | Echte tekst plaatsen | Nee |
+| I2 | ⚪ | [/blog](https://klant.webflow.io/blog) (+4) | Afbeelding met "placeholder" in de bestandsnaam | 6adb…_placeholder.svg | Nakijken: echte afbeelding of bewust gekozen? | Nee |
+
+## Responsive (R)
+
+(zelfde tabel, met R1, R2, …)
+
+### R2 · Secties met de tekst boven de afbeelding op gsm
+
+| Sectie | Pagina's |
+| --- | --- |
+| "Onze diensten" (.services_component) | [/](https://klant.webflow.io/), [/over](https://klant.webflow.io/over) |
+
+## Niet automatisch gecontroleerd
+
+- [ ] {checklist-punt} ({categorie})
+```
+
+### Soorten
+
+Elke bevinding gaat naar de soort van haar controle (`check`):
+
+| Soort | Code | Controles |
+| --- | --- | --- |
+| Inhoud | I | `missing-content`, `test-page`, `draft-pages` |
+| Responsive | R | `horizontal-scroll`, `overlap`, `clipped-text`, `text-outside`, `image-text-order`, en wat je zelf op screenshots ziet |
+| Links | L | `broken-links`, `empty-links` |
+| Formulieren | F | `form-success-message`, `form-error-message`, `form-name`, `form-inputs` |
+| SEO | S | `heading-1`, `heading-structure`, `image-alt`, `seo-title`, `seo-description`, `seo-migration`, `redirects`, `slugs`, `schema`, `page-structure`, `indexing`, `noindex`, `sitemap`, `default-domain` |
+| Navigatie en logo | N | `nav-sticky`, `nav-scroll-lock`, `nav-menu-fit`, `logo-link`, `logo-format` |
+| Afbeeldingen en stijl | A | `image-quality`, `hover-state`, `fonts`, `heading-style`, `input-style` |
+| CMS | C | `empty-state`, `cms-seo`, `cms-slugs`, `cms-fields`, `cms-items`, `cms-content`, `conditional-visibility` |
+| Projectinstellingen | P | `webflow-badge`, `favicon`, `lang`, `gtm`, `timezone`, `page-names` |
+
+Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij past.
+
+### Afspraken
+
+- Volgorde van de soorten: zoals in de tabel hierboven. Binnen een soort: eerst 🔴, dan 🟠, dan 🟡, en ⚪ onderaan.
+- Elke bug krijgt de code van haar soort en een volgnummer binnen die soort (I1, I2, R1, …), zodat het team kan zeggen "fix I3, R1 en L2". Een bug die later bijkomt krijgt het volgende nummer van haar soort; de andere codes blijven gelijk.
+- Prio: het bolletje van de `hint` van de tool. Een bevinding met `label: "na te kijken"` krijgt ⚪, tenzij je ze op een screenshot bevestigd hebt; dan krijgt ze het bolletje van haar `hint`.
+- Pagina: het pad van de eerste pagina als link naar die pagina op de gecontroleerde site (start-URL + pad), en `(+n)` als de bug op meer pagina's staat.
+- Links: elk pad van een pagina in het rapport is een link, ook in Bewijs en in de lijsten onder de tabellen. Kapotte externe links, pdf's en links die bots weren zijn ook klikbaar, zodat het team ze meteen kan testen. Oude paden van het live domein (die niet meer bestaan) blijven gewone tekst.
+- Bewijs: één korte regel uit `evidence` of `element`, of "screenshot op 390 px" als je de fout op een screenshot zag. Geen volledige JSON.
+- Voorstel: wat het team in Webflow moet aanpassen, in één zin. Bij ⚪: wat het team moet nakijken en waarom het onzeker is.
+- Claude kan fixen: "Ja" enkel voor de soorten fixes uit "Fixes" hierboven, anders "Nee".
+- Details die niet in één cel passen (alle kapotte links, alle secties, oude paden) komen direct onder de tabel van hun soort: per bug een kop `### L1 · korte titel` en daaronder een kleine tabel met één rij per link, sectie of pagina. Onder de kop mag hoogstens één korte alinea uitleg staan. Geen losse notities of opsommingen onder de tabellen, en dezelfde gegevens nooit in twee detailtabellen.
+- Een bug die na controle geschrapt is, vermeld je in één zin in de inleiding van haar soort.
+- Stopte de check-up aan het vangnet (`stoppedAtMaxPages`), zeg dat bovenaan het rapport.
+- Webflow-lezer: staat er `webflow` in de samenvatting, noem dan in de inleiding van CMS welke site gelezen is en hoeveel collecties en items. Staan de Webflow-controles in `skipped`, zet de reden dan bij die punten op de afvinklijst (bv. "geen Webflow-token voor deze site").
+- Migratie: staat er `migration` in de samenvatting, zet dan bovenaan de SEO-soort één zin met de cijfers, bv. "Van de 120 pagina's van de oude site (www.klant.be) bestaan er 80 op hetzelfde pad, 25 hebben een redirect en 15 geven een 404." Met `truncated: true` zeg je dat enkel de eerste 300 pagina's vergeleken zijn. Staan de migratiecontroles in `skipped`, zet de reden dan bij Redirects, Page and CMS Slugs en When Migrating op de afvinklijst.
+- Bij `redirects` en `slugs` zijn de pagina's oude paden: zet ze als gewone tekst. De volledige lijst (uit `evidence`) komt in de detailtabel van de bug, gegroepeerd per sectie van de oude site (kolommen Groep, Aantal, Oude paden). Bij `slugs` toon je per pad waar de redirect naartoe gaat (kolommen Oud pad, Redirect naar).
+- Bij `seo-migration` toon je in de detailtabel per pagina de oude en de nieuwe titel (of description), de eerste tien en het totaal.
+
+## Prioriteiten
+
+- **Hoog**: een bezoeker ziet het, of de vindbaarheid lijdt eronder. Bijvoorbeeld een kapotte interne link, horizontale scroll, geen of twee h1's, lorem ipsum of standaardtekst van Webflow, een standaardmelding bij formulieren, de Webflow-badge, of een staging-domein dat geïndexeerd wordt.
+- **Midden**: het werkt, maar het is niet af. Bijvoorbeeld een kapotte externe link, ontbrekende alt-teksten, een formulier zonder eigen naam, velden met een standaardnaam, een ontbrekend of standaard favicon, of een ontbrekende taalcode.
+- **Laag**: interne afspraken die de bezoeker niet ziet, of kleine onvolkomenheden. Bijvoorbeeld een overgeslagen headingniveau, een ontbrekende web clip, classnamen in Title Case of helpteksten bij CMS-velden.
+
+Twijfel je tussen twee niveaus, kies het hoogste en zeg waarom.
+
+## Checklist
+
+De 74 punten van de pre-launch checklist van Skrol. Punten die niet in `coverage` van get_checkup_status staan, controleert de tool niet: zet ze in het rapport als afvinklijst, met de categorie tussen haakjes.
+
+- **Style Guide**: Global Heading Tags; Rich Text; Global Colors; Global Buttons; Custom Inputs and Form Fields; Custom Container and Grid Set Up; Global Margin & Padding Classes; Max Width Classes; Navigation and Footer Symbols; Fonts
+- **Usability and Design**: Hover States; Linking Pages; Interaction Speed; Interactions on Tabs, Dropdowns and Sliders; Navigation; Tablet and Mobile Hover States; Double Check Spacings; Missing Content; Blurry Images; Images Height; Navigation Scroll; Nav Menu Scroll; Image + Text; Horizontal Scroll; Check on All Devices and Small Laptops
+- **SEO**: Heading 1; Heading Structure; When Migrating - SEO Title & Description; When It's a New Site - SEO Title & Description; Image Alt Texts; Page Structure; Schema Markup; Webflow Domain Indexing; Website Sitemap; Default Domain; Search Console; Page and CMS Slugs; Redirects; Speed
+- **Forms**: Input Settings; Form Settings; Form Success Message; Form Error Message; CRM Connection; Custom Validation
+- **CMS Pages**: CMS Slugs; CMS Fields; Dummy CMS Content; CMS Connection; Conditional Visibility; CMS Post Pages Designs; Empty CMS List State; CMS Items connections; Dynamic SEO Titles, Descriptions and OG Images; CMS Sorting & Filtering; CMS Switches
+- **Symbols**: Symbol Check; New Page in Flow Starter
+- **Naming Conventions**: All Classes in Title Case; Page Names in Title Case; Interaction Naming
+- **Logo**: Logo Link; Logo Alt Text; Logo Size
+- **Project Settings**: Favicon and Web Clip; Language Code; Remove Webflow Branding; Timezone; Advanced Publishing Options; Custom Client Branding
+- **Tracking**: GTM Set Up
+- **Final Check**: Google Chrome; Safari; Firefox
