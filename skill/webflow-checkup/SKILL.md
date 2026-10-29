@@ -17,7 +17,7 @@ Het resultaat is altijd een **doc** (Claude Docs), nooit enkel een antwoord in d
 4. **Bevindingen ophalen.** Haal ze op per prioriteit: eerst `hint: "hoog"`, dan `"midden"`, dan `"laag"`. Volg `next_offset` tot alles binnen is.
 5. **Lay-out nakijken.** Bevindingen van `overlap`, `clipped-text`, `text-outside` en `image-text-order` hebben "na te kijken": de tool meet ze, maar weet niet of het er fout uitziet. Bekijk ze met `get_screenshot` (url = start-URL + pagina, `width` = `viewport` van de bevinding, `selector` = `element`). Zie je de fout op het screenshot, dan is het een zekere bug met als bewijs een link naar het screenshot (zie "Bewijs" onder "Afspraken"). Zie je ze niet, laat ze dan weg. Zijn er veel van dezelfde soort, bekijk er dan een paar en zeg in het rapport hoeveel je bekeken hebt.
 6. **Pagina's bekijken.** Dit is het checklist-punt "Check on All Devices and Small Laptops". Haal `list_pages` op en bekijk de homepage en één pagina per sectie op 1440, 992 en 390 px; vraag de volgende delen op (`part`) als de pagina langer is. Kijk naar wat de metingen niet zien: elementen die verspringen of verdwijnen, witruimte die niet klopt, afbeeldingen die verkeerd uitgesneden zijn, een menu of footer die niet past. Meld enkel duidelijke fouten, met de link naar het screenshot als bewijs. Houd het bij een twintigtal screenshots. Sla je deze stap over, zet het punt dan op de afvinklijst.
-7. **Rapport schrijven** als doc, volgens "Rapportformaat" hieronder. Maak het doc aan met de titel "Check-up {site} — {datum}" en één blok per soort, open het, en vul daarna soort per soort: de overzichtstabel, dan per soort de inleiding, de tabel en de detailtabellen. Een tabel in markdown kan geen opsomming in een cel bevatten: zet daarna de cellen met meerdere punten om naar een opsomming (de cel vervangen met een markdown-lijst) en geef als laatste om de andere rij de grijze kleur (zie "Afspraken"). Is er geen docs-tool in de chat, maak dan een artifact (een pagina) met dezelfde inhoud. Schrijf het rapport nooit enkel in de chat.
+7. **Rapport schrijven** als doc, volgens "Rapportformaat" hieronder. Maak het doc aan met de titel "Check-up {site} — {datum}" en één blok per soort, open het, en vul daarna soort per soort: de overzichtstabel, dan per soort de inleiding, de tabel en de detailtabellen. Een tabel in markdown kan geen opsomming in een cel bevatten: zet daarna de cellen met meerdere punten om naar een opsomming (de cel vervangen met een markdown-lijst), zet in elke cel van de kolom Opgelost een afvinkvakje (de cel vervangen met `- [ ] `) en geef als laatste om de andere rij de grijze kleur (zie "Afspraken"). Is er geen docs-tool in de chat, maak dan een artifact (een pagina) met dezelfde inhoud. Schrijf het rapport nooit enkel in de chat.
 8. **Fixes** en andere aanpassingen in Webflow enkel als de gebruiker erom vraagt, bv. "fix I3, R1 en L2". Zie "Fixes" hieronder.
 
 ## Regels voor het rapport
@@ -74,11 +74,11 @@ Gebruik exact deze opbouw. Laat een soort weg als ze leeg is, maar houd "Niet au
 
 ## Inhoud (I)
 
-| # | Prio | Pagina | Bug | Bewijs | Voorstel | Claude kan fixen |
-| --- | --- | --- | --- | --- | --- | --- |
-| I1 | 🔴 | [/diensten](https://klant.webflow.io/diensten) (+3) | Lorem ipsum in de intro | `.hero_text` p: "Lorem ipsum dolor…" | Echte tekst plaatsen | Nee |
-| I2 | 🔴 | [/voorwaarden](https://klant.webflow.io/voorwaarden) | De pagina is leeg | [Screenshot op 1440 px](https://checkup.skrol.agency/screenshots/…): geen navigatie, geen tekst | Pagina opbouwen met navigatie, footer en tekst | Nee |
-| I3 | ⚪ | [/blog](https://klant.webflow.io/blog) (+4) | Afbeelding met "placeholder" in de bestandsnaam | 6adb…_placeholder.svg | Nakijken: echte afbeelding of bewust gekozen? | Nee |
+| # | Opgelost | Prio | Pagina | Bug | Bewijs | Voorstel | Claude kan fixen |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| I1 | ☐ | 🔴 | [/diensten](https://klant.webflow.io/diensten) (+3) | Lorem ipsum in de intro | `.hero_text` p: "Lorem ipsum dolor…" | Echte tekst plaatsen | Nee |
+| I2 | ☐ | 🔴 | [/voorwaarden](https://klant.webflow.io/voorwaarden) | De pagina is leeg | [Screenshot op 1440 px](https://checkup.skrol.agency/screenshots/…): geen navigatie, geen tekst | Pagina opbouwen met navigatie, footer en tekst | Nee |
+| I3 | ☐ | ⚪ | [/blog](https://klant.webflow.io/blog) (+4) | Afbeelding met "placeholder" in de bestandsnaam | 6adb…_placeholder.svg | Nakijken: echte afbeelding of bewust gekozen? | Nee |
 
 ## Responsive (R)
 
@@ -117,6 +117,7 @@ Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij
 
 - Volgorde van de soorten: zoals in de tabel hierboven. Binnen een soort: eerst 🔴, dan 🟠, dan 🟡, en ⚪ onderaan.
 - Elke bug krijgt de code van haar soort en een volgnummer binnen die soort (I1, I2, R1, …), zodat het team kan zeggen "fix I3, R1 en L2". Een bug die later bijkomt krijgt het volgende nummer van haar soort; de andere codes blijven gelijk.
+- Opgelost: de tweede kolom van elke bugtabel is een afvinkvakje (☐ in het voorbeeld hierboven), zodat het team opgeloste bugs kan afvinken. Detailtabellen krijgen geen vakje. Het team vinkt zelf af; Claude vinkt niets aan, ook niet na een fix, want iemand van Skrol kijkt de fix eerst na.
 - Prio: het bolletje van de `hint` van de tool. Een bevinding met `label: "na te kijken"` krijgt ⚪, tenzij je ze op een screenshot bevestigd hebt; dan krijgt ze het bolletje van haar `hint`.
 - Pagina: het pad van de eerste pagina als link naar die pagina op de gecontroleerde site (start-URL + pad), en `(+n)` als de bug op meer pagina's staat.
 - Links: elk pad van een pagina in het rapport is een link, ook in Bewijs en in de lijsten onder de tabellen. Kapotte externe links, pdf's en links die bots weren zijn ook klikbaar, zodat het team ze meteen kan testen. Oude paden van het live domein (die niet meer bestaan) blijven gewone tekst.
