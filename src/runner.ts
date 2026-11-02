@@ -61,7 +61,10 @@ export interface CheckupResult {
 }
 
 const HINT_ORDER: Record<Hint, number> = { hoog: 0, midden: 1, laag: 2 };
-const EMPTY_LINK_EXEMPT = /\b(w-lightbox|w-dropdown-toggle|w-nav-button|w-tab-link|w-slider-arrow|w-slider-dot)\b/;
+// Links die door JavaScript bediend worden en geen bestemming nodig hebben: lightbox, dropdown, tabs,
+// en de pijlen en bolletjes van sliders (Webflow, Swiper, Splide, Slick, Flickity, Glide, Owl, Fancybox).
+const EMPTY_LINK_EXEMPT =
+  /\b(w-lightbox|w-dropdown-toggle|w-nav-button|w-tab-link|w-slider-arrow|w-slider-dot|swiper-button-(?:next|prev)|swiper-button|swiper-pagination-bullet|splide__arrow|splide__pagination__page|slick-(?:arrow|prev|next)|flickity-(?:button|prev-next-button)|glide__(?:arrow|bullet)|owl-(?:prev|next|dot)|f-carousel__button)\b/;
 
 interface LinkOccurrence {
   link: RawLink;

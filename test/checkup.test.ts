@@ -119,7 +119,7 @@ test("links: kapot intern, kapot extern, na te kijken, en werkende links niet", 
   assert.equal(byUrl.has("https://www.klant.be/over"), false);
   assert.equal(links.length, 5, links.map((l) => l.message).join("\n"));
   const empty = find("empty-links");
-  assert.equal(empty.length, 1, "lightbox-link met # telt niet mee");
+  assert.equal(empty.length, 1, "lightbox-link en swiper-pijlen met # tellen niet mee");
   assert.deepEqual(empty[0].pages, ["/fout"]);
 });
 
