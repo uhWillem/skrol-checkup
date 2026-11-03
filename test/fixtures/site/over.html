@@ -5,7 +5,7 @@
   <meta name="description" content="Het team achter Klant.">
   <script>/* Google Tag Manager: googletagmanager.com/gtm.js GTM-TEST123 (niet echt geladen in de test) */</script>
   <link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/webclip.png">
-  <style>a:hover { color: #c00; }</style>
+  <style>a:hover { color: #c00; } .verborgen-blok { display: none; }</style>
 </head>
 <body>
   <nav><a href="/">Home</a></nav>
@@ -16,6 +16,17 @@
       <a href="EXT/gone">verdwenen</a>, <a href="EXT/error">serverfout</a>, <a href="EXT/blocked">weert bots</a>.</p>
     <p>Oude links: <a href="https://www.klant.be/over">bestaat nog</a>, <a href="https://klant.be/oude-pagina">bestaat niet meer</a>.</p>
     <img src="/deco.svg" alt="" aria-hidden="true">
+    <!-- In Webflow op hidden gezet, en verborgen met conditional visibility: telt niet mee. -->
+    <div class="verborgen-blok">
+      <h1>Verborgen titel</h1>
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+      <img src="/zonder-alt.png">
+      <a href="#">Lege verborgen link</a>
+    </div>
+    <div class="w-dyn-list w-condition-invisible">
+      <div class="w-dyn-empty"><div>No items found.</div></div>
+      <div>This is some text inside of a div block.</div>
+    </div>
   </main>
   <footer><a href="/">Home</a></footer>
 </body>

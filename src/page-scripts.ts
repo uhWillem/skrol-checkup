@@ -3,10 +3,19 @@
 
 import { LOREM_WORDS } from "./text.js";
 
+/**
+ * Waarom een element niet te zien is, als het bewust verborgen is in Webflow:
+ * "condition": conditional visibility (w-condition-invisible), "hidden": op hidden gezet (display none).
+ * In de pagina heet dat "hidden:<nummer>"; de runner kijkt na of het op een andere breedte zichtbaar is.
+ * null: zichtbaar, of verborgen tot een bezoeker iets doet (tab, dropdown, pop-up, interactie): dat telt wel mee.
+ */
+export type HiddenReason = "condition" | "hidden" | `hidden:${number}` | null;
+
 export interface RawHeading {
   level: number;
   text: string;
   visible: boolean;
+  hidden: HiddenReason;
   selector: string;
 }
 
@@ -16,6 +25,7 @@ export interface RawImage {
   /** Decoratief gemarkeerd, of deel van de Webflow-badge of een kaartwidget: telt niet mee voor alt-teksten. */
   decorative: boolean;
   visible: boolean;
+  hidden: HiddenReason;
   /**
    * "empty": in een link of knop zonder andere tekst, aria-label of title;
    * "named": in een link of knop die al een naam heeft (dan is een lege alt juist goed);
@@ -29,6 +39,7 @@ export interface RawTextHit {
   kind: "lorem" | "default-div" | "default-heading" | "placeholder-image" | "placeholder-upload";
   text: string;
   visible: boolean;
+  hidden: HiddenReason;
   selector: string;
 }
 
@@ -49,6 +60,7 @@ export interface RawForm {
   successText: string | null;
   errorText: string | null;
   inputs: RawInput[];
+  hidden: HiddenReason;
 }
 
 export interface RawLink {
@@ -57,6 +69,7 @@ export interface RawLink {
   text: string;
   className: string;
   role: string;
+  hidden: HiddenReason;
   selector: string;
 }
 
@@ -67,7 +80,7 @@ export interface RawPageData {
   images: RawImage[];
   textHits: RawTextHit[];
   forms: RawForm[];
-  emptyStates: Array<{ text: string; selector: string }>;
+  emptyStates: Array<{ text: string; selector: string; hidden: HiddenReason }>;
   icons: string[];
   touchIcons: string[];
   hasBadge: boolean;
@@ -89,6 +102,26 @@ const HELPERS = String.raw`
     const style = getComputedStyle(el);
     if (style.display === "none" || style.visibility === "hidden") return false;
     return el.getClientRects().length > 0;
+  };
+  // Verborgen tot een bezoeker iets doet: telt mee, want de bezoeker kan het te zien krijgen.
+  const INTERACTIVE = ".w-tab-pane, .w-dropdown-list, .w-nav-menu, .w-nav-overlay, .w-lightbox-backdrop, dialog, [role='dialog'], [aria-modal='true'], .w-form-done, .w-form-fail";
+  const INTERACTIVE_CLASS = /modal|pop-?up|lightbox|dropdown|tab-pane|overlay|accordion|faq/i;
+  let hiddenCount = 0;
+  const hiddenReason = (el) => {
+    if (!(el instanceof Element)) return null;
+    if (el.closest(".w-condition-invisible")) return "condition";
+    if (isVisible(el) || el.closest(INTERACTIVE)) return null;
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      const s = getComputedStyle(n);
+      if (s.display !== "none" && s.visibility !== "hidden") continue;
+      // Een interactie van Webflow zet de beginstand inline (style="display:none") op een element met data-w-id.
+      if (n.hasAttribute("data-w-id") || /display\s*:\s*none|visibility\s*:\s*hidden/i.test(n.getAttribute("style") || "")) return null;
+      if (INTERACTIVE_CLASS.test(typeof n.className === "string" ? n.className : "")) return null;
+      // Op hidden gezet in Webflow. Of het op een andere schermbreedte wel zichtbaar is, kijkt de runner na.
+      if (!el.hasAttribute("data-skrol-hidden")) el.setAttribute("data-skrol-hidden", String(hiddenCount++));
+      return "hidden:" + el.getAttribute("data-skrol-hidden");
+    }
+    return null;
   };
   const selectorOf = (el) => {
     const parts = [];
@@ -117,6 +150,7 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
     level: Number(h.tagName[1]),
     text: clean(h.textContent).slice(0, 120),
     visible: isVisible(h),
+    hidden: hiddenReason(h),
     selector: selectorOf(h),
   }));
 
@@ -141,6 +175,7 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
         !!img.closest(".w-webflow-badge") ||
         img.classList.contains("leaflet-tile"),
       visible: isVisible(img),
+      hidden: hiddenReason(img),
       inLink: !link ? "none" : hasOtherName(link, img) ? "named" : "empty",
       selector: selectorOf(img),
     };
@@ -161,9 +196,9 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
     const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(" ");
     const text = clean(own);
     if (!text) continue;
-    if (/lorem ipsum|dolor sit amet/i.test(text) || isPseudoLatin(text)) textHits.push({ kind: "lorem", text: text.slice(0, 80), visible: isVisible(el), selector: selectorOf(el) });
-    else if (text === "This is some text inside of a div block.") textHits.push({ kind: "default-div", text, visible: isVisible(el), selector: selectorOf(el) });
-    else if (/^H[1-6]$/.test(el.tagName) && text === "Heading") textHits.push({ kind: "default-heading", text, visible: isVisible(el), selector: selectorOf(el) });
+    if (/lorem ipsum|dolor sit amet/i.test(text) || isPseudoLatin(text)) textHits.push({ kind: "lorem", text: text.slice(0, 80), visible: isVisible(el), hidden: hiddenReason(el), selector: selectorOf(el) });
+    else if (text === "This is some text inside of a div block.") textHits.push({ kind: "default-div", text, visible: isVisible(el), hidden: hiddenReason(el), selector: selectorOf(el) });
+    else if (/^H[1-6]$/.test(el.tagName) && text === "Heading") textHits.push({ kind: "default-heading", text, visible: isVisible(el), hidden: hiddenReason(el), selector: selectorOf(el) });
   }
   const fileName = (url) => {
     try { return decodeURIComponent(new URL(url, location.href).pathname.split("/").pop() || ""); } catch { return ""; }
@@ -171,12 +206,12 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
   for (const img of document.querySelectorAll("img")) {
     const src = img.getAttribute("src") || "";
     if (/placeholder\.[0-9a-f]+\.svg/i.test(src)) {
-      textHits.push({ kind: "placeholder-image", text: src.slice(-60), visible: isVisible(img), selector: selectorOf(img) });
+      textHits.push({ kind: "placeholder-image", text: src.slice(-60), visible: isVisible(img), hidden: hiddenReason(img), selector: selectorOf(img) });
       continue;
     }
     // Zelf geüploade placeholders, bv. 6adb..._placeholder-p-500.jpg
     const name = [src, img.currentSrc || ""].map(fileName).find((n) => /(^|[_\-.\s])(placeholder|dummy)([_\-.\s]|$)/i.test(n));
-    if (name) textHits.push({ kind: "placeholder-upload", text: name.slice(-60), visible: isVisible(img), selector: selectorOf(img) });
+    if (name) textHits.push({ kind: "placeholder-upload", text: name.slice(-60), visible: isVisible(img), hidden: hiddenReason(img), selector: selectorOf(img) });
   }
 
   const labelFor = (input) => {
@@ -209,10 +244,11 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
       successText: done ? clean(done.textContent) : null,
       errorText: fail ? clean(fail.textContent) : null,
       inputs,
+      hidden: hiddenReason(form),
     };
   });
 
-  const emptyStates = [...document.querySelectorAll(".w-dyn-empty")].map((el) => ({ text: clean(el.textContent), selector: selectorOf(el) }));
+  const emptyStates = [...document.querySelectorAll(".w-dyn-empty")].map((el) => ({ text: clean(el.textContent), selector: selectorOf(el), hidden: hiddenReason(el) }));
 
   const relLinks = (pattern) => [...document.querySelectorAll("link[rel]")]
     .filter((l) => pattern.test(l.getAttribute("rel") || ""))
@@ -224,6 +260,7 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
     text: clean(a.textContent).slice(0, 60),
     className: typeof a.className === "string" ? a.className : "",
     role: a.getAttribute("role") || "",
+    hidden: hiddenReason(a),
     selector: selectorOf(a),
   }));
 
@@ -240,6 +277,12 @@ export const COLLECT_PAGE_DATA = String.raw`(() => {
     hasBadge: !!document.querySelector(".w-webflow-badge"),
     links,
   };
+})()`;
+
+/** Nummers van de op hidden gezette elementen (data-skrol-hidden) die bij deze schermbreedte wel zichtbaar zijn. */
+export const VISIBLE_HIDDEN = String.raw`(() => {
+  ${HELPERS}
+  return [...document.querySelectorAll("[data-skrol-hidden]")].filter(isVisible).map((el) => Number(el.getAttribute("data-skrol-hidden")));
 })()`;
 
 /** Meet horizontale overloop bij de huidige viewport. */

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8"><title>Fout</title>
   <link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/webclip.png">
+  <style>.alleen-gsm { display: none; } @media (max-width: 767px) { .alleen-gsm { display: block; } }</style>
 </head>
 <body>
   <main>
@@ -23,6 +24,9 @@
     <div class="te-breed" style="width: 600px; height: 20px; background: red;">breed blok</div>
     <a href="/bestaat-niet">Kapotte interne link</a>
     <a href="#">Lege link</a>
+    <!-- Op desktop verborgen maar op gsm zichtbaar, en verborgen tot een interactie: tellen wel mee. -->
+    <div class="alleen-gsm"><a href="#" class="gsm-link">Enkel op gsm</a></div>
+    <div data-w-id="abc-123" style="display: none;"><a href="#" class="ix-link">Na een klik</a></div>
     <a href="/over" class="button">Knop zonder hover</a>
   </main>
   <a class="w-webflow-badge" href="EXT/ok"><img src="/badge.svg" alt="" width="20" height="20">Made in Webflow</a>

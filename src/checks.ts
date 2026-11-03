@@ -2,7 +2,7 @@
 // dezelfde sleutel op meerdere pagina's wordt in de runner samengevoegd tot één bevinding.
 
 import { CHECKS, type CheckInfo, type Finding } from "./types.js";
-import type { HoverStatic, HoverTarget, RawForm, RawLayout, RawOverflow, RawPageData, RawStyleDefaults } from "./page-scripts.js";
+import type { HiddenReason, HoverStatic, HoverTarget, RawForm, RawLayout, RawOverflow, RawPageData, RawStyleDefaults } from "./page-scripts.js";
 
 export interface Draft extends Omit<Finding, "id" | "pages" | "browser" | "check" | "item" | "category" | "hint"> {
   info: CheckInfo;
@@ -47,6 +47,32 @@ export function testPageWord(path: string): string | null {
 /** Selector zonder volgnummers, zodat dezelfde soort afbeelding op elke pagina dezelfde sleutel krijgt. */
 export function componentOf(selector: string): string {
   return selector.replace(/:nth-of-type\(\d+\)/g, "");
+}
+
+/**
+ * Zet "hidden:<nummer>" om na de metingen op alle schermbreedtes: was het element op een breedte zichtbaar,
+ * dan is het niet bewust verborgen (null), anders "hidden".
+ */
+export function resolveHidden(data: RawPageData, visibleIds: Set<number>): RawPageData {
+  const fix = (h: HiddenReason): HiddenReason => {
+    if (!h || !h.startsWith("hidden:")) return h;
+    return visibleIds.has(Number(h.slice(7))) ? null : "hidden";
+  };
+  const each = <T extends { hidden: HiddenReason }>(list: T[]): T[] => list.map((x) => ({ ...x, hidden: fix(x.hidden) }));
+  return {
+    ...data,
+    headings: each(data.headings),
+    images: each(data.images),
+    textHits: each(data.textHits),
+    forms: each(data.forms),
+    emptyStates: each(data.emptyStates),
+    links: each(data.links),
+  };
+}
+
+/** Bewust verborgen in Webflow (op hidden gezet of conditional visibility): die controleren we niet. */
+export function isHidden(x: { hidden?: HiddenReason }): boolean {
+  return !!x.hidden;
 }
 
 function headingChecks(data: RawPageData, page: string): Draft[] {
@@ -221,7 +247,16 @@ function settingsChecks(data: RawPageData, ctx: PageContext): Draft[] {
   return drafts;
 }
 
-export function pageDrafts(data: RawPageData, page: string, ctx: PageContext = { onWebflowIo: false }): Draft[] {
+export function pageDrafts(raw: RawPageData, page: string, ctx: PageContext = { onWebflowIo: false }): Draft[] {
+  // Wat in Webflow bewust verborgen is, ziet geen bezoeker: dat controleren we niet.
+  const data: RawPageData = {
+    ...raw,
+    headings: raw.headings.filter((x) => !isHidden(x)),
+    images: raw.images.filter((x) => !isHidden(x)),
+    textHits: raw.textHits.filter((x) => !isHidden(x)),
+    forms: raw.forms.filter((x) => !isHidden(x)),
+    emptyStates: raw.emptyStates.filter((x) => !isHidden(x)),
+  };
   return [...headingChecks(data, page), ...imageChecks(data), ...contentChecks(data, page), ...formChecks(data), ...settingsChecks(data, ctx), ...testPageChecks(page)];
 }
 

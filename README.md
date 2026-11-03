@@ -14,6 +14,11 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.7: bijges
 | `list_pages` | Alle gecontroleerde pagina's met statuscode, per sectie (bv. `/blog`). |
 | `get_screenshot` | Screenshot van een pagina op een schermbreedte: de volledige pagina in delen, of het stuk rond een element (`selector`) met het element omkaderd. Zo kijkt Claude lay-outbevindingen na en beoordeelt het pagina's. Elk screenshot krijgt een vaste link (`screenshotUrl`, `/screenshots/<id>.jpg`) die zonder API-sleutel opent, zodat het rapport ernaar kan linken. De id is 24 willekeurige tekens; na `SCREENSHOT_DAYS` dagen (standaard 180) wordt het beeld opgeruimd. |
 
+
+### Verborgen elementen
+
+Wat in Webflow bewust verborgen is, controleert de tool niet: elementen die op hidden staan (display none) op elke schermbreedte, en elementen die met conditional visibility verborgen zijn (`w-condition-invisible`). Dat geldt voor headings, alt-teksten, opvultekst, formulieren, lege CMS-lijsten en links. Wat op één breedte verborgen is maar op een andere zichtbaar, telt wel mee. Ook wat pas zichtbaar wordt na een klik of hover (tabs, dropdowns, het gsm-menu, pop-ups, interacties van Webflow) telt mee, want een bezoeker kan het te zien krijgen.
+
 ## Wat deze versie controleert
 
 | Controle | Checklist-punt | Prioriteit |

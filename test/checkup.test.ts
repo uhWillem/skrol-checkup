@@ -119,8 +119,12 @@ test("links: kapot intern, kapot extern, na te kijken, en werkende links niet", 
   assert.equal(byUrl.has("https://www.klant.be/over"), false);
   assert.equal(links.length, 5, links.map((l) => l.message).join("\n"));
   const empty = find("empty-links");
-  assert.equal(empty.length, 1, "lightbox-link en swiper-pijlen met # tellen niet mee");
-  assert.deepEqual(empty[0].pages, ["/fout"]);
+  // Lightbox en swiper-pijlen tellen niet mee, en ook niet wat op /over op hidden staat.
+  // Wel: de gewone lege link, een link die enkel op gsm zichtbaar is, en een link achter een interactie.
+  assert.equal(empty.length, 3, empty.map((f) => `${f.pages} ${f.element}`).join("\n"));
+  for (const f of empty) assert.deepEqual(f.pages, ["/fout"]);
+  assert.ok(empty.some((f) => /gsm-link/.test(String(f.element))));
+  assert.ok(empty.some((f) => /ix-link/.test(String(f.element))));
 });
 
 test("formulieren: standaardmeldingen, naam en velden; het nieuwsbriefformulier is in orde", () => {

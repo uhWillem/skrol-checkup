@@ -4,7 +4,7 @@ import type { Config } from "./config.js";
 import { guardedContext, launchChromium } from "./browser.js";
 import { isLikelyHtml, normalizeDomain, normalizeLinkUrl, normalizePageUrl, pathOf, readSitemap } from "./discover.js";
 import { checkLink, fetchWithGuard, mapLimit, type LinkStatus } from "./links.js";
-import { fontDrafts, hoverDraft, layoutDrafts, overflowDrafts, pageDrafts, styleDefaultDrafts, type Draft } from "./checks.js";
+import { fontDrafts, hoverDraft, isHidden, layoutDrafts, overflowDrafts, pageDrafts, resolveHidden, styleDefaultDrafts, type Draft } from "./checks.js";
 import { navigationDrafts } from "./navigation.js";
 import { migrationDrafts } from "./migration.js";
 import { folderOf, parseSeo, seoDrafts, type SeoPage } from "./seo.js";
@@ -18,6 +18,7 @@ import {
   LIST_HOVER_TARGETS,
   MARK_PAIRS,
   MEASURE_LAYOUT,
+  VISIBLE_HIDDEN,
   MEASURE_OVERFLOW,
   STYLE_DEFAULTS,
   type HoverTarget,
@@ -251,7 +252,6 @@ export async function runCheckup(
           result.analysisError = (e as Error).message.split("\n")[0];
           return;
         }
-        for (const draft of pageDrafts(data, path, { onWebflowIo })) findings.add(draft, path);
 
         // Stijl en hover, op de brede viewport.
         try {
@@ -279,6 +279,8 @@ export async function runCheckup(
         }
 
         // Een fout in de lay-outmetingen mag de rest van de pagina niet tegenhouden.
+        // Elementen die op hidden staan maar op een andere schermbreedte zichtbaar zijn, tellen wel mee.
+        const visibleHidden = new Set<number>();
         try {
           await page.evaluate(MARK_PAIRS);
           const overflow: Array<{ width: number; m: RawOverflow }> = [];
@@ -288,6 +290,7 @@ export async function runCheckup(
             await page.waitForTimeout(300);
             overflow.push({ width: viewport.width, m: (await page.evaluate(MEASURE_OVERFLOW)) as RawOverflow });
             layout.push({ width: viewport.width, l: (await page.evaluate(MEASURE_LAYOUT)) as RawLayout });
+            for (const id of (await page.evaluate(VISIBLE_HIDDEN)) as number[]) visibleHidden.add(id);
           }
           for (const draft of overflowDrafts(overflow, path)) findings.add(draft, path);
           for (const draft of layoutDrafts(layout, path)) findings.add(draft, path);
@@ -295,8 +298,11 @@ export async function runCheckup(
           result.analysisError = (e as Error).message.split("\n")[0];
         }
 
+        data = resolveHidden(data, visibleHidden);
+        for (const draft of pageDrafts(data, path, { onWebflowIo })) findings.add(draft, path);
+
         for (const link of data.links) {
-          occurrences.push({ link, page: path });
+          if (!isHidden(link)) occurrences.push({ link, page: path });
           const target = normalizePageUrl(link.href);
           if (!target || new URL(target).origin !== origin || !isLikelyHtml(target) || seen.has(target)) continue;
           seen.add(target);
