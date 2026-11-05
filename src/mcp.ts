@@ -47,13 +47,13 @@ export function createMcpServer(
       title: "Check-up starten",
       description:
         "Start een check-up van een Webflow-site als achtergrondtaak en geeft een job-ID terug. " +
-        "Geef de staging-URL (bv. https://klant.webflow.io). De tool crawlt alle pagina's van de site, " +
+        "Geef de staging-URL (bv. https://klant.webflow.io) of het live domein van een site die al online staat (bv. https://www.klant.be). De tool crawlt alle pagina's van de site, " +
         "controleert ze in Chromium op meerdere schermbreedtes en test alle links. " +
         "Geef live_domain mee als je het live domein van de klant kent: links naar dat domein worden dan op de nieuwe site gecontroleerd. " +
         "Zonder live_domain haalt de tool het uit sitemap.xml als dat kan. " +
         "Volg de voortgang op met get_checkup_status.",
       inputSchema: {
-        url: z.string().url().describe("Start-URL van de site, meestal de staging-URL op .webflow.io"),
+        url: z.string().url().describe("Start-URL van de site: de staging-URL op .webflow.io of het live domein"),
         live_domain: z
           .string()
           .optional()

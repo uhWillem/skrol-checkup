@@ -116,7 +116,7 @@ Gebruik je een Chromium die niet bij deze Playwright-versie hoort, zet dan `CHRO
 
 Alle instellingen gaan via omgevingsvariabelen; zie `.env.example`. De belangrijkste:
 
-- `ALLOWED_DOMAINS`: domeinen die de tool als pagina mag openen. Standaard `*.webflow.io`. Voeg klantdomeinen toe, bv. `*.webflow.io,klant.be`.
+- `ALLOWED_DOMAINS`: domeinen die de tool als pagina mag openen. Standaard `*.webflow.io`. Voeg klantdomeinen toe, bv. `*.webflow.io,klant.be`, of zet `*` om elk publiek domein toe te laten. Interne adressen (localhost, privé-IP's) blijven altijd geblokkeerd.
 - `MCP_PATH`: pad van de MCP-server. Kies een moeilijk te raden pad zolang er geen login is.
 - `API_KEY`: als ingesteld, moet elke aanroep `x-api-key: <sleutel>` of `Authorization: Bearer <sleutel>` meesturen.
 - `MAX_PAGES`: vangnet tegen eindeloze crawls (standaard 1000). De crawl negeert zoekparameters en volgt enkel links op hetzelfde domein.

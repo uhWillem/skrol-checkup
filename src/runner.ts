@@ -394,8 +394,11 @@ export async function runCheckup(
   }
 
   // Migratie: de oude site op het live domein vergelijken met de nieuwe.
+  // Is de gecontroleerde site zelf het live domein, dan is er geen oude site om mee te vergelijken.
   let migration: MigrationSummary | undefined;
-  if (liveDomain) {
+  if (liveDomain && matchesDomain(startHost, [liveDomain])) {
+    for (const check of MIGRATION_CHECKS) skipped.push({ check, reason: "de gecontroleerde site staat zelf op het live domein: er is geen oude site om mee te vergelijken" });
+  } else if (liveDomain) {
     onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "oude site vergelijken" });
     const result = await migrationDrafts(
       liveDomain,
@@ -413,7 +416,10 @@ export async function runCheckup(
       for (const { draft, pages: on } of result.drafts) for (const p of on) findings.add(draft, p);
     }
   } else {
-    for (const check of MIGRATION_CHECKS) skipped.push({ check, reason: "geen live domein opgegeven of in de sitemap gevonden" });
+    const reason = onWebflowIo
+      ? "geen live domein opgegeven of in de sitemap gevonden"
+      : "geen ander live domein gevonden: staat de gecontroleerde site zelf live, dan is er geen oude site om mee te vergelijken";
+    for (const check of MIGRATION_CHECKS) skipped.push({ check, reason });
   }
 
   onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "links controleren" });

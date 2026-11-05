@@ -22,6 +22,7 @@ test("matchesDomain: wildcard en kaal domein", () => {
   assert.equal(matchesDomain("www.klant.be", ["klant.be"]), true);
   assert.equal(matchesDomain("shop.klant.be", ["klant.be"]), false);
   assert.equal(matchesDomain("evilklant.be", ["klant.be"]), false);
+  assert.equal(matchesDomain("www.klant.be", ["*"]), true, "* laat elk domein toe");
 });
 
 test("isPrivateIp: interne adressen worden herkend", () => {

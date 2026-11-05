@@ -1,11 +1,12 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-/** True als de hostnaam overeenkomt met een patroon zoals "*.webflow.io" of "klant.be". */
+/** True als de hostnaam overeenkomt met een patroon zoals "*.webflow.io", "klant.be" of "*" (elk domein). */
 export function matchesDomain(hostname: string, patterns: string[]): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, "");
   return patterns.some((pattern) => {
     const p = pattern.toLowerCase();
+    if (p === "*") return true;
     if (p.startsWith("*.")) {
       const base = p.slice(2);
       return host === base || host.endsWith(`.${base}`);

@@ -11,7 +11,7 @@ Het resultaat is altijd een **doc** (Claude Docs), nooit enkel een antwoord in d
 
 ## Werkwijze
 
-1. **URL bepalen.** Gebruik de staging-URL op `.webflow.io` die de gebruiker geeft. Geen URL gekregen? Vraag ernaar. Een live klantdomein werkt enkel als het in de toegestane domeinen van de server staat.
+1. **URL bepalen.** Gebruik de URL die de gebruiker geeft: meestal de staging-URL op `.webflow.io`, maar een site die al live staat kan ook (bv. `https://www.klant.be`). Geen URL gekregen? Vraag ernaar. Controleer je het live domein zelf, dan is er geen oude site om mee te vergelijken: de migratiecontroles staan dan in `summary.skipped`.
 2. **Starten.** Roep `start_checkup` aan en zeg in één zin dat de check-up loopt. Ken je het live domein van de klant (de gebruiker noemt het, of het blijkt uit de vraag), geef het mee als `live_domain`, bv. `klant.be`. Vraag er niet apart naar: zonder `live_domain` haalt de tool het uit de sitemap als dat kan. Met een live domein vergelijkt de tool ook de oude site die daar nu draait (redirects, slugs, SEO-titels); de cijfers staan in `summary.migration`. Heeft de server een Webflow-token voor de site, dan leest de tool ook het CMS, de paginanamen en de tijdzone uit Webflow (`summary.webflow`).
 3. **Opvolgen.** Vraag `get_checkup_status` op tot de status `done` of `failed` is. Een check-up duurt meestal enkele minuten. Bij `failed`: meld de foutmelding letterlijk en stop.
 4. **Bevindingen ophalen.** Haal ze op per prioriteit: eerst `hint: "hoog"`, dan `"midden"`, dan `"laag"`. Volg `next_offset` tot alles binnen is.
@@ -37,8 +37,8 @@ Het resultaat is altijd een **doc** (Claude Docs), nooit enkel een antwoord in d
 Fixes en andere aanpassingen lopen via de officiële Webflow-connector, nooit via de browsertool. Vraagt de gebruiker een aanpassing, dan mag je in principe alles wijzigen wat de connector kan: bv. teksten en elementen, CMS-items en -velden, pagina-instellingen (SEO-titels, descriptions, OG, slugs, schema), alt-teksten, links, headings, classes, stijlen en variabelen, componenten, formulieren, interacties, scripts en custom code.
 
 - Voer enkel uit wat de gebruiker vraagt, bv. "fix I3, R1 en L2" of "vervang de lorem ipsum op /over door deze tekst". Breid de opdracht niet zelf uit; zie je onderweg nog iets, meld het dan.
-- Is de vraag ruim ("fix alle SEO-titels") of raakt ze veel pagina's of items, zet dan eerst kort op een rij wat je gaat wijzigen en wacht op een ja.
-- Inhoud die de klant moet aanleveren (echte teksten, foto's, een logo) verzin je niet: stel een tekst voor en wacht op een ja, of vraag de inhoud.
+- **Wacht altijd op goedkeuring.** Zet vóór je iets wijzigt per bug op een rij wat je gaat aanpassen: waar (pagina, element of CMS-item) en van wat naar wat. Voer pas uit na een uitdrukkelijk ja van de gebruiker. "Fix I3" is de vraag, niet de goedkeuring.
+- Teksten pas je aan met de tekst die de gebruiker geeft. Heb je die niet, stel dan zelf een tekst voor in het voorstel; na het ja zet je die in Webflow. Foto's, een logo of een video maak je niet: vraag het bestand.
 - Is een wijziging moeilijk terug te draaien (het type van een CMS-veld, de slug van een pagina die al live staat), zeg dat dan vóór je ze uitvoert.
 - Zegt een tool dat de site in de Webflow Designer open moet staan, vraag de gebruiker dan om ze te openen en probeer daarna opnieuw.
 
@@ -76,8 +76,8 @@ Gebruik exact deze opbouw. Laat een soort weg als ze leeg is, maar houd "Niet au
 
 | # | Opgelost | Prio | Pagina | Bug | Bewijs | Voorstel | Claude kan fixen |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| I1 | ☐ | 🔴 | [/diensten](https://klant.webflow.io/diensten) (+3) | Lorem ipsum in de intro | `.hero_text` p: "Lorem ipsum dolor…" | Echte tekst plaatsen | Nee |
-| I2 | ☐ | 🔴 | [/voorwaarden](https://klant.webflow.io/voorwaarden) | De pagina is leeg | [Screenshot op 1440 px](https://checkup.skrol.agency/screenshots/…): geen navigatie, geen tekst | Pagina opbouwen met navigatie, footer en tekst | Nee |
+| I1 | ☐ | 🔴 | [/diensten](https://klant.webflow.io/diensten) (+3) | Lorem ipsum in de intro | `.hero_text` p: "Lorem ipsum dolor…" | Echte tekst plaatsen | Ja |
+| I2 | ☐ | 🔴 | [/voorwaarden](https://klant.webflow.io/voorwaarden) | De pagina is leeg | [Screenshot op 1440 px](https://checkup.skrol.agency/screenshots/…): geen navigatie, geen tekst | Pagina opbouwen met navigatie, footer en tekst | Ja |
 | I3 | ☐ | ⚪ | [/blog](https://klant.webflow.io/blog) (+4) | Afbeelding met "placeholder" in de bestandsnaam | 6adb…_placeholder.svg | Nakijken: echte afbeelding of bewust gekozen? | Nee |
 
 ## Responsive (R)
@@ -125,7 +125,7 @@ Een nieuwe controle die hier niet staat, zet je bij de soort die er het best bij
 - Opsommingen: staan er in een cel meerdere punten (meerdere elementen, pagina's, opmerkingen of stappen), zet ze dan als opsomming in de cel, één punt per regel. Een toelichting bij een punt, of de pagina's die bij een punt horen, komen als ingesprongen subpunten. Eén zin met één punt blijft gewone tekst. Een lange reeks namen of oude paden (meer dan tien) blijft tekst met komma's.
 - Rijkleuren: in elke tabel, ook de overzichtstabel en de detailtabellen, krijgt om de andere rij (de 2e, 4e, … rij onder de kop) de grijze celkleur #f0efec, zodat je bij horizontaal scrollen de rij blijft volgen. Kleur de rijen pas als de tabel af is; komt er later een rij bij, kleur de tabel dan opnieuw.
 - Voorstel: wat het team in Webflow moet aanpassen, in één zin. Bij ⚪: wat het team moet nakijken en waarom het onzeker is.
-- Claude kan fixen: "Ja" als de fix een aanpassing in Webflow is die Claude via de Webflow-connector kan doen (zie "Fixes"). "Nee" als ze iets buiten Webflow vraagt (DNS, Search Console, een CRM, de oude site) of inhoud die de klant moet aanleveren (echte teksten, een scherpere foto).
+- Claude kan fixen: "Ja" voor alles wat in Webflow via de Webflow-connector aangepast kan worden, ook teksten, CMS-items, SEO-velden, alt-teksten, links, headings, classes, stijlen en instellingen (Claude voert het pas uit na goedkeuring, zie "Fixes"). "Nee" enkel als de fix iets buiten Webflow vraagt (DNS, Search Console, een CRM, de hosting of de oude site) of een nieuw bestand dat Claude niet kan maken (een scherpere foto, een logo, een video).
 - Details die niet in één cel passen (alle kapotte links, alle secties, oude paden) komen direct onder de tabel van hun soort: per bug een kop `### L1 · korte titel` en daaronder een kleine tabel met één rij per link, sectie of pagina. Onder de kop mag hoogstens één korte alinea uitleg staan. Geen losse notities of opsommingen onder de tabellen, en dezelfde gegevens nooit in twee detailtabellen.
 - Een bug die na controle geschrapt is, vermeld je in één zin in de inleiding van haar soort.
 - Stopte de check-up aan het vangnet (`stoppedAtMaxPages`), zeg dat bovenaan het rapport.
