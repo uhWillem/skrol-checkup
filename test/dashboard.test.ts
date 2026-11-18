@@ -136,6 +136,11 @@ test("PDF-rapport", async () => {
   assert.ok(body.length > 5_000);
 });
 
+test("zonder Google-login geen Google Doc: de export heeft de OAuth-client nodig", async () => {
+  assert.equal((await get(`/dashboard/jobs/${doneJob}/google-doc`)).status, 404);
+  assert.ok((await (await get("/dashboard")).text()).includes("const GOOGLE_DOC = false;"));
+});
+
 test("annuleren zonder de header van het dashboard wordt geweigerd", async () => {
   const res = await cancel(doneJob, AUTH);
   assert.equal(res.status, 403);

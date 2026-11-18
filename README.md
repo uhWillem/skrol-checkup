@@ -13,7 +13,7 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.9: bijges
 | `get_findings` | Bevindingen, gesorteerd op prioriteit, te filteren op controle, pagina of prioriteit, per 100. |
 | `list_pages` | Alle gecontroleerde pagina's met statuscode, per sectie (bv. `/blog`). |
 | `get_screenshot` | Screenshot van een pagina op een schermbreedte: de volledige pagina in delen, of het stuk rond een element (`selector`) met het element omkaderd. Zo kijkt Claude lay-outbevindingen na en beoordeelt het pagina's. Elk screenshot krijgt een vaste link (`screenshotUrl`, `/screenshots/<id>.jpg`) die zonder API-sleutel opent, zodat het rapport ernaar kan linken. De id is 24 willekeurige tekens; na `SCREENSHOT_DAYS` dagen (standaard 180) wordt het beeld opgeruimd. |
-| `list_checkups` | Alle check-ups op de server, de nieuwste eerst, te filteren op status of site: voortgang, plaats in de wachtrij, foutmelding, bevindingen per prioriteit en links naar het rapport (PDF en CSV) in het dashboard. |
+| `list_checkups` | Alle check-ups op de server, de nieuwste eerst, te filteren op status of site: voortgang, plaats in de wachtrij, foutmelding, bevindingen per prioriteit en links naar het rapport (PDF, CSV en Google Doc) in het dashboard. |
 | `cancel_checkup` | Stopt een check-up die loopt of in de wachtrij staat, net als de knop in het dashboard. Enkel op vraag van de gebruiker. |
 | `restart_checkup` | Start een afgelopen check-up (klaar, mislukt of geannuleerd) opnieuw met dezelfde URL en hetzelfde live domein, en geeft een nieuw job-ID. |
 
@@ -23,7 +23,7 @@ Op `/dashboard` staat een dashboard voor het team (het adres `/` verwijst ernaar
 
 - **Nu bezig**: lopende check-ups met hun voortgang, en jobs in de wachtrij. Met **Annuleren** (twee keer klikken) stop je er een. Een job in de wachtrij verdwijnt meteen; bij een lopende check-up sluit de browser meteen en is de plaats binnen enkele seconden vrij voor de volgende. De status wordt `cancelled`; in Claude geven `get_findings` en `list_pages` dan "geannuleerd". Vanuit de chat kan hetzelfde met `list_checkups`, `cancel_checkup` en `restart_checkup`.
 - **Vorige check-ups**: alle afgelopen check-ups, de nieuwste eerst, met duur, aantal pagina's, bevindingen per prioriteit en de foutmelding als een check-up mislukte. Te filteren op site.
-- **Rapport**: per afgeronde check-up een **PDF** met alle bevindingen per soort (zelfde indeling als het rapport van de skill) en een **CSV** met alle bevindingen voor Excel of Google Sheets (puntkomma's, UTF-8). Dit zijn de bevindingen zoals de tool ze vond, nog niet nagekeken: het bugrapport voor het team blijft het doc dat Claude maakt.
+- **Rapport**: per afgeronde check-up een **PDF** met alle bevindingen per soort (zelfde indeling als het rapport van de skill), een **CSV** met alle bevindingen voor Excel of Google Sheets (puntkomma's, UTF-8), en met de Google-login een knop **Google Doc** (zie "Rapport als Google Doc"). Dit zijn de bevindingen zoals de tool ze vond, nog niet nagekeken: het bugrapport voor het team blijft het doc dat Claude maakt.
 
 De pagina vernieuwt vanzelf (elke 3 seconden zolang er iets loopt).
 
@@ -41,6 +41,21 @@ De sessie zit in een ondertekend cookie (HttpOnly, SameSite=Lax), ondertekend me
 Het wachtwoord in `DASHBOARD_PASSWORD` is de reserve: met een Google-login staat op de loginpagina onder "Inloggen met het reservewachtwoord" een veld voor het wachtwoord, en het werkt ook als Basic Auth (bv. `curl -u x:<wachtwoord> https://checkup.skrol.agency/dashboard/api/jobs`). Zo'n sessie vervalt zodra het wachtwoord in Coolify verandert. Zonder Google-login vraagt de browser meteen een gebruikersnaam en wachtwoord; de gebruikersnaam maakt niet uit. Na 10 foute wachtwoorden binnen een kwartier krijgt dat adres een kwartier geen toegang. Zonder Google-login en zonder wachtwoord staat het dashboard uit.
 
 De Claude-connector (`MCP_PATH`, `API_KEY`) staat los van de login op het dashboard.
+
+### Rapport als Google Doc
+
+De knop **Google Doc** opent een nieuw tabblad: de eerste keer vraagt Google toestemming voor Google Drive, daarna zet de tool het rapport als Google Doc in je Drive ("Check-up klant.webflow.io — 18 november 2026") en opent het. Wie al toestemming gaf, ziet het toestemmingsscherm niet opnieuw. Het doc bevat dezelfde bevindingen als de PDF, met de prioriteit als gekleurd bolletje zoals in het bugrapport van de skill.
+
+- De tool vraagt enkel de scope `drive.file`: ze kan alleen bestanden lezen en wijzigen die ze zelf maakte, niet de rest van de Drive. Het access token wordt meteen gebruikt en nergens bewaard.
+- De toestemming loopt via dezelfde redirect URI als de login (`/dashboard/auth/callback`) en enkel voor wie ingelogd is op het dashboard, ook met het reservewachtwoord.
+- Zonder Google-login (enkel `DASHBOARD_PASSWORD`) is er geen knop: de export heeft de OAuth-client nodig.
+
+Eenmalig instellen in Google Cloud Console, in hetzelfde project als de OAuth-client:
+
+1. APIs & Services > Library > **Google Drive API** > Enable.
+2. Google Auth Platform > Data Access > Add or remove scopes: `.../auth/drive.file` toevoegen (een niet-gevoelige scope, dus geen verificatie door Google nodig).
+
+Staat de Drive API niet aan, dan zegt de foutpagina dat.
 
 ### Verborgen elementen
 
@@ -146,7 +161,7 @@ Alle instellingen gaan via omgevingsvariabelen; zie `.env.example`. De belangrij
 - `ALLOWED_DOMAINS`: domeinen die de tool als pagina mag openen. Standaard `*.webflow.io`. Voeg klantdomeinen toe, bv. `*.webflow.io,klant.be`, of zet `*` om elk publiek domein toe te laten. Interne adressen (localhost, privé-IP's) blijven altijd geblokkeerd.
 - `MCP_PATH`: pad van de MCP-server. Kies een moeilijk te raden pad zolang er geen login is.
 - `API_KEY`: als ingesteld, moet elke aanroep `x-api-key: <sleutel>` of `Authorization: Bearer <sleutel>` meesturen.
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DASHBOARD_EMAILS`: inloggen met Google op het dashboard (zie "Inloggen").
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DASHBOARD_EMAILS`: inloggen met Google op het dashboard (zie "Inloggen"), en het rapport als Google Doc (zie "Rapport als Google Doc").
 - `DASHBOARD_PASSWORD`: wachtwoord van het dashboard, als reserve naast de Google-login of als enige login. Kies een lang, willekeurig wachtwoord.
 - `MAX_PAGES`: vangnet tegen eindeloze crawls (standaard 1000). De crawl negeert zoekparameters en volgt enkel links op hetzelfde domein.
 

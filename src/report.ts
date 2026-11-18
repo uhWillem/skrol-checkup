@@ -115,12 +115,37 @@ function findingRow(f: Finding, origin: string): string {
 </tr>`;
 }
 
-export function reportHtml(job: Job, result: CheckupResult): string {
+/** Wat het PDF-rapport en het Google Doc gemeen hebben: de bevindingen per soort en de gegevens van de check-up. */
+function reportData(job: Job, result: CheckupResult) {
   const origin = new URL(result.startUrl).origin;
   const host = hostOf(result.startUrl);
   const s = result.summary;
   const groups = grouped(result.findings);
-  const count = (list: Finding[], p: Prio) => list.filter((f) => prioOf(f) === p).length;
+
+  const details: Array<[string, string]> = [
+    ["Site", `<a href="${esc(result.startUrl)}">${esc(result.startUrl)}</a>`],
+    ["Live domein", s.liveDomain ? `${esc(s.liveDomain)} (${s.liveDomainSource === "sitemap" ? "uit de sitemap" : "opgegeven"})` : "geen: links naar het live domein tellen als externe links"],
+    ["Gestart", esc(formatDate(job.startedAt ?? job.createdAt))],
+    ["Duur", esc(formatDuration(job.startedAt, job.finishedAt))],
+    ["Pagina's", `${s.pages} gecontroleerd${s.pagesWithErrors ? `, ${s.pagesWithErrors} met een fout` : ""}${s.stoppedAtMaxPages ? ", gestopt aan het maximum aantal pagina's" : ""}`],
+  ];
+  if (s.webflow) details.push(["Webflow", `site "${esc(s.webflow.site)}" gelezen${s.webflow.items !== undefined ? `, ${s.webflow.items} CMS-items` : ""}`]);
+  if (s.migration) {
+    const m = s.migration;
+    details.push(["Oude site", `${esc(m.oldSite)}: ${m.oldPages} pagina's, ${m.same} op hetzelfde pad, ${m.redirected} met een redirect, ${m.missing} zonder pagina of redirect`]);
+  }
+  details.push(["Job", esc(job.id)]);
+
+  const byReason = new Map<string, string[]>();
+  for (const { check, reason } of s.skipped ?? []) byReason.set(reason, [...(byReason.get(reason) ?? []), check]);
+  const broken = result.pages.filter((p) => p.error || (p.status ?? 0) >= 400);
+  return { origin, host, groups, details, skipped: [...byReason], broken };
+}
+
+const count = (list: Finding[], p: Prio) => list.filter((f) => prioOf(f) === p).length;
+
+export function reportHtml(job: Job, result: CheckupResult): string {
+  const { origin, host, groups, details, skipped: skippedByReason, broken } = reportData(job, result);
   const dot = (p: Prio) => `<span class="dot ${p}" title="${PRIO_LABEL[p]}"></span>`;
 
   const overview = groups
@@ -143,27 +168,9 @@ ${g.findings.map((f) => findingRow(f, origin)).join("\n")}
     )
     .join("\n");
 
-  const details: Array<[string, string]> = [
-    ["Site", `<a href="${esc(result.startUrl)}">${esc(result.startUrl)}</a>`],
-    ["Live domein", s.liveDomain ? `${esc(s.liveDomain)} (${s.liveDomainSource === "sitemap" ? "uit de sitemap" : "opgegeven"})` : "geen: links naar het live domein tellen als externe links"],
-    ["Gestart", esc(formatDate(job.startedAt ?? job.createdAt))],
-    ["Duur", esc(formatDuration(job.startedAt, job.finishedAt))],
-    ["Pagina's", `${s.pages} gecontroleerd${s.pagesWithErrors ? `, ${s.pagesWithErrors} met een fout` : ""}${s.stoppedAtMaxPages ? ", gestopt aan het maximum aantal pagina's" : ""}`],
-  ];
-  if (s.webflow) details.push(["Webflow", `site "${esc(s.webflow.site)}" gelezen${s.webflow.items !== undefined ? `, ${s.webflow.items} CMS-items` : ""}`]);
-  if (s.migration) {
-    const m = s.migration;
-    details.push(["Oude site", `${esc(m.oldSite)}: ${m.oldPages} pagina's, ${m.same} op hetzelfde pad, ${m.redirected} met een redirect, ${m.missing} zonder pagina of redirect`]);
-  }
-  details.push(["Job", esc(job.id)]);
-
-  const byReason = new Map<string, string[]>();
-  for (const { check, reason } of s.skipped ?? []) byReason.set(reason, [...(byReason.get(reason) ?? []), check]);
-  const skipped = [...byReason]
+  const skipped = skippedByReason
     .map(([reason, checks]) => `<li><span class="code">${checks.map(esc).join(", ")}</span>: ${esc(reason)}</li>`)
     .join("\n");
-
-  const broken = result.pages.filter((p) => p.error || (p.status ?? 0) >= 400);
   const brokenList = broken
     .slice(0, 100)
     .map((p) => `<li><a href="${esc(p.url)}">${esc(p.path)}</a>: ${esc(p.error ? cut(p.error, 160) : `HTTP ${p.status}`)}</li>`)
@@ -232,6 +239,88 @@ ${skipped ? `<section><h2>Niet gecontroleerd</h2><ul>${skipped}</ul></section>` 
 ${broken.length ? `<section><h2>Pagina's met een fout <span class="count">${broken.length}</span></h2><ul>${brokenList}</ul></section>` : ""}
 </body>
 </html>`;
+}
+
+const PRIO_EMOJI: Record<Prio, string> = { hoog: "🔴", midden: "🟠", laag: "🟡", na: "⚪" };
+const DOC_ZEBRA = "#f0efec";
+const DOC_CELL = "padding:4pt 6pt;vertical-align:top;border:1px solid #e1e3e6";
+const DOC_HEAD = `${DOC_CELL};font-weight:bold;text-align:left;border-bottom:1.5px solid #1d2126`;
+const DOC_META = "color:#69707a;font-size:8.5pt";
+
+/** Cel met inline stijl: Google Docs neemt bij het omzetten geen klassen over, enkel inline stijlen. */
+function docCell(content: string, zebra: boolean, extra = ""): string {
+  return `<td style="${DOC_CELL}${zebra ? `;background-color:${DOC_ZEBRA}` : ""}${extra ? `;${extra}` : ""}">${content}</td>`;
+}
+
+/**
+ * Hetzelfde rapport als de PDF, maar als HTML die Google Drive goed omzet naar een Google Doc: inline stijlen,
+ * gewone tabellen en gekleurde bolletjes als emoji (zoals in het bugrapport van de skill).
+ */
+export function reportDocHtml(job: Job, result: CheckupResult): string {
+  const { origin, host, groups, details, skipped, broken } = reportData(job, result);
+  const head = (...labels: string[]) => `<tr>${labels.map((l) => `<th style="${DOC_HEAD}">${l}</th>`).join("")}</tr>`;
+
+  const overview = [
+    ...groups.map((g, i) => `<tr>${docCell(esc(g.name), i % 2 === 1)}${PRIOS.map((p) => docCell(String(count(g.findings, p) || ""), i % 2 === 1, "text-align:right")).join("")}${docCell(String(g.findings.length), i % 2 === 1, "text-align:right")}</tr>`),
+    `<tr>${docCell("<b>Totaal</b>", false)}${PRIOS.map((p) => docCell(`<b>${count(result.findings, p)}</b>`, false, "text-align:right")).join("")}${docCell(`<b>${result.findings.length}</b>`, false, "text-align:right")}</tr>`,
+  ].join("\n");
+
+  const findingRowDoc = (f: Finding, i: number) => {
+    const prio = prioOf(f);
+    const meta = [
+      f.element ? `Element: ${esc(cut(f.element, 160))}` : "",
+      f.viewport && !f.message.includes(`${f.viewport} px`) ? `Schermbreedte: ${f.viewport} px` : "",
+      `Checklist: ${esc(f.item)}`,
+    ].filter(Boolean);
+    const shown = f.pages.slice(0, MAX_PAGES_PER_FINDING).map((p) => `<a href="${esc(origin + p)}">${esc(p)}</a>`);
+    const more = f.pages.length - shown.length;
+    const zebra = i % 2 === 1;
+    return `<tr>${docCell(`${PRIO_EMOJI[prio]} ${PRIO_LABEL[prio]}`, zebra)}${docCell(`${esc(f.message)}<br><span style="${DOC_META}">${meta.join("<br>")}</span>`, zebra)}${docCell(`${shown.join("<br>")}${more > 0 ? `<br><span style="${DOC_META}">en nog ${more}</span>` : ""}`, zebra)}</tr>`;
+  };
+
+  const sections = groups
+    .map(
+      (g) => `<h2>${esc(g.name)} (${g.findings.length})</h2>
+<table style="border-collapse:collapse;width:100%">
+${head("Prioriteit", "Bevinding", "Pagina's")}
+${g.findings.map(findingRowDoc).join("\n")}
+</table>`,
+    )
+    .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Check-up ${esc(host)}</title>
+</head>
+<body style="font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#1d2126">
+<h1>Check-up ${esc(host)}</h1>
+<p style="color:#4c535c">De bevindingen zoals de tool ze vond, nog niet nagekeken. Wat "na te kijken" is, kon de tool niet zeker vaststellen. Het nagekeken bugrapport maakt Claude met de skill webflow-checkup.</p>
+<table style="border-collapse:collapse">
+${details.map(([k, v]) => `<tr><td style="${DOC_CELL};${DOC_META}">${k}</td><td style="${DOC_CELL}">${v}</td></tr>`).join("\n")}
+</table>
+${
+  result.findings.length === 0
+    ? `<p>De tool vond niets op deze site.</p>`
+    : `<h2>Overzicht</h2>
+<p style="${DOC_META}">${PRIOS.map((p) => `${PRIO_EMOJI[p]} ${PRIO_LABEL[p].toLowerCase()}`).join(" · ")}</p>
+<table style="border-collapse:collapse">
+${head("Soort", ...PRIOS.map((p) => PRIO_EMOJI[p]), "Totaal")}
+${overview}
+</table>
+${sections}`
+}
+${skipped.length ? `<h2>Niet gecontroleerd</h2><ul>${skipped.map(([reason, checks]) => `<li>${checks.map(esc).join(", ")}: ${esc(reason)}</li>`).join("\n")}</ul>` : ""}
+${broken.length ? `<h2>Pagina's met een fout (${broken.length})</h2><ul>${broken.slice(0, 100).map((p) => `<li><a href="${esc(p.url)}">${esc(p.path)}</a>: ${esc(p.error ? cut(p.error, 160) : `HTTP ${p.status}`)}</li>`).join("\n")}</ul>` : ""}
+</body>
+</html>`;
+}
+
+/** Titel van het Google Doc, bv. "Check-up klant.webflow.io — 18 november 2026". */
+export function reportDocTitle(job: Job): string {
+  const day = new Intl.DateTimeFormat("nl-BE", { timeZone: "Europe/Brussels", day: "numeric", month: "long", year: "numeric" });
+  return `Check-up ${hostOf(job.url)} — ${day.format(new Date(job.finishedAt ?? job.createdAt))}`;
 }
 
 /** Zet een HTML-rapport om naar PDF in Chromium, zonder scripts en zonder netwerk. */
