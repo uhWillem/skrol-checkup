@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { googleLoginEnabled, type Config } from "./config.js";
-import { finishLogin, logoutCookie, safeNext, sessionEmail, startLogin } from "./google-login.js";
+import { finishLogin, logoutCookie, passwordSessionCookie, safeNext, sessionUser, startLogin } from "./google-login.js";
 import type { JobStore } from "./jobs.js";
 import { findingsCsv, renderPdf, reportFileName, reportHtml } from "./report.js";
 import type { Job } from "./types.js";
@@ -81,12 +81,29 @@ function redirect(res: ServerResponse, location: string, setCookies: string[] = 
   res.end();
 }
 
+/** Leest een klein formulier (application/x-www-form-urlencoded). */
+function readForm(req: IncomingMessage): Promise<URLSearchParams> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => {
+      body += chunk;
+      if (body.length > 4096) {
+        reject(new Error("formulier te groot"));
+        req.destroy();
+      }
+    });
+    req.on("end", () => resolve(new URLSearchParams(body)));
+    req.on("error", reject);
+  });
+}
+
 function sendHtml(res: ServerResponse, status: number, html: (nonce: string) => string, setCookies: string[] = []): void {
   const nonce = randomBytes(16).toString("base64");
   res.writeHead(status, {
     ...BASE_HEADERS,
     "content-type": "text/html; charset=utf-8",
-    "content-security-policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+    "content-security-policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
     ...(setCookies.length ? { "set-cookie": setCookies } : {}),
   });
   res.end(html(nonce));
@@ -129,13 +146,36 @@ export async function handleDashboard(
   let user: string | undefined;
 
   if (googleLoginEnabled(config)) {
-    const signedIn = sessionEmail(req, config);
+    const withPassword = !!config.dashboardPassword;
+    let signedIn = sessionUser(req, config);
+    // Het reservewachtwoord werkt ook als Basic Auth, bv. voor scripts (curl -u x:wachtwoord).
+    const given = withPassword ? passwordFrom(req) : null;
+    if (!signedIn && given !== null) {
+      const ip = clientIp(req);
+      if (blocked(ip)) return sendJson(res, 429, { error: "Te veel foute wachtwoorden. Probeer het over een kwartier opnieuw." });
+      if (samePassword(given, config.dashboardPassword)) signedIn = { password: true };
+      else recordFailure(ip);
+    }
     if (path === `${DASHBOARD_PATH}/login` && method === "GET") {
       const next = safeNext(url.searchParams.get("next"));
       if (signedIn) return redirect(res, next);
       const notice = url.searchParams.has("uit") ? "Je bent uitgelogd." : undefined;
-      const error = config.dashboardEmails.length === 0 ? "Er mag nog niemand inloggen: DASHBOARD_EMAILS is leeg." : undefined;
-      return sendHtml(res, 200, (nonce) => loginPage(nonce, next, { notice, error }));
+      const error = config.dashboardEmails.length === 0 && !withPassword ? "Er mag nog niemand inloggen: DASHBOARD_EMAILS is leeg." : undefined;
+      return sendHtml(res, 200, (nonce) => loginPage(nonce, next, { notice, error, withPassword }));
+    }
+    if (path === `${DASHBOARD_PATH}/login/wachtwoord` && method === "POST") {
+      if (!withPassword) return sendJson(res, 404, { error: "niet gevonden" });
+      const ip = clientIp(req);
+      const form = await readForm(req).catch(() => new URLSearchParams());
+      const next = safeNext(form.get("next"));
+      if (blocked(ip)) {
+        return sendHtml(res, 429, (nonce) => loginPage(nonce, next, { error: "Te veel foute wachtwoorden. Probeer het over een kwartier opnieuw.", withPassword, open: true }));
+      }
+      if (!samePassword(form.get("wachtwoord") ?? "", config.dashboardPassword)) {
+        recordFailure(ip);
+        return sendHtml(res, 401, (nonce) => loginPage(nonce, next, { error: "Dat wachtwoord klopt niet.", withPassword, open: true }));
+      }
+      return redirect(res, next, [passwordSessionCookie(config, baseUrl)]);
     }
     if (path === `${DASHBOARD_PATH}/login/google` && method === "GET") {
       const { location, setCookie } = startLogin(config, baseUrl, safeNext(url.searchParams.get("next")));
@@ -143,7 +183,7 @@ export async function handleDashboard(
     }
     if (path === `${DASHBOARD_PATH}/auth/callback` && method === "GET") {
       const result = await finishLogin(req, url, config, baseUrl);
-      if (!result.ok) return sendHtml(res, result.status, (nonce) => loginPage(nonce, "/dashboard", { error: result.error }), result.setCookies);
+      if (!result.ok) return sendHtml(res, result.status, (nonce) => loginPage(nonce, "/dashboard", { error: result.error, withPassword }), result.setCookies);
       return redirect(res, result.next, result.setCookies);
     }
     if (path === `${DASHBOARD_PATH}/logout` && method === "GET") {
@@ -153,7 +193,7 @@ export async function handleDashboard(
       if (path.startsWith(`${DASHBOARD_PATH}/api/`)) return sendJson(res, 401, { error: "Niet ingelogd." });
       return redirect(res, `${DASHBOARD_PATH}/login?next=${encodeURIComponent(url.pathname + url.search)}`);
     }
-    user = signedIn;
+    user = "email" in signedIn ? signedIn.email : "Ingelogd met het wachtwoord";
   } else if (config.dashboardPassword) {
     const ip = clientIp(req);
     if (blocked(ip)) {
@@ -221,7 +261,7 @@ export async function handleDashboard(
   return sendJson(res, 404, { error: "niet gevonden" });
 }
 
-function loginPage(nonce: string, next: string, message: { notice?: string; error?: string }): string {
+function loginPage(nonce: string, next: string, message: { notice?: string; error?: string; withPassword?: boolean; open?: boolean }): string {
   return `<!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -241,6 +281,13 @@ function loginPage(nonce: string, next: string, message: { notice?: string; erro
   a.google { display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 6px; border: 1px solid #cfd3d9; color: #1d2126; text-decoration: none; font-weight: 500; }
   a.google:hover { border-color: #9da3ab; }
   a.google svg { width: 18px; height: 18px; }
+  details { margin-top: 36px; }
+  summary { cursor: pointer; color: #646b75; font-size: 14px; }
+  summary:hover { color: #1d2126; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  label { flex-basis: 100%; font-size: 14px; color: #646b75; }
+  input[type="password"] { font: inherit; font-size: 15px; padding: 8px 10px; border: 1px solid #cfd3d9; border-radius: 6px; flex: 1; min-width: 200px; }
+  button { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid #1d2126; background: #1d2126; color: #fff; cursor: pointer; }
   :focus-visible { outline: 2px solid #2f62d6; outline-offset: 2px; }
 </style>
 </head>
@@ -254,6 +301,19 @@ function loginPage(nonce: string, next: string, message: { notice?: string; erro
     <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.2l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.8c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.8c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>
     Inloggen met Google
   </a>
+  ${
+    message.withPassword
+      ? `<details${message.open ? " open" : ""}>
+    <summary>Inloggen met het reservewachtwoord</summary>
+    <form method="post" action="/dashboard/login/wachtwoord">
+      <input type="hidden" name="next" value="${esc(next)}">
+      <label for="wachtwoord">Wachtwoord (DASHBOARD_PASSWORD in Coolify)</label>
+      <input type="password" id="wachtwoord" name="wachtwoord" autocomplete="current-password" required${message.open ? " autofocus" : ""}>
+      <button type="submit">Inloggen</button>
+    </form>
+  </details>`
+      : ""
+  }
 </main>
 </body>
 </html>`;

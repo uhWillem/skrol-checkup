@@ -38,7 +38,7 @@ Met `GOOGLE_CLIENT_ID` en `GOOGLE_CLIENT_SECRET` log je in met Google. Enkel wie
 
 De sessie zit in een ondertekend cookie (HttpOnly, SameSite=Lax), ondertekend met een sleutel afgeleid van het client secret: een nieuw secret logt iedereen uit. De login gebruikt state en PKCE, en na het inloggen gaat het enkel terug naar een pagina van het dashboard.
 
-Zonder Google-login is het dashboard beveiligd met het wachtwoord in `DASHBOARD_PASSWORD`: de browser vraagt een gebruikersnaam en wachtwoord, de gebruikersnaam maakt niet uit. Na 10 foute wachtwoorden binnen een kwartier krijgt dat adres een kwartier geen toegang. Met een Google-login telt het wachtwoord niet meer. Zonder beide staat het dashboard uit.
+Het wachtwoord in `DASHBOARD_PASSWORD` is de reserve: met een Google-login staat op de loginpagina onder "Inloggen met het reservewachtwoord" een veld voor het wachtwoord, en het werkt ook als Basic Auth (bv. `curl -u x:<wachtwoord> https://checkup.skrol.agency/dashboard/api/jobs`). Zo'n sessie vervalt zodra het wachtwoord in Coolify verandert. Zonder Google-login vraagt de browser meteen een gebruikersnaam en wachtwoord; de gebruikersnaam maakt niet uit. Na 10 foute wachtwoorden binnen een kwartier krijgt dat adres een kwartier geen toegang. Zonder Google-login en zonder wachtwoord staat het dashboard uit.
 
 De Claude-connector (`MCP_PATH`, `API_KEY`) staat los van de login op het dashboard.
 
@@ -147,7 +147,7 @@ Alle instellingen gaan via omgevingsvariabelen; zie `.env.example`. De belangrij
 - `MCP_PATH`: pad van de MCP-server. Kies een moeilijk te raden pad zolang er geen login is.
 - `API_KEY`: als ingesteld, moet elke aanroep `x-api-key: <sleutel>` of `Authorization: Bearer <sleutel>` meesturen.
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DASHBOARD_EMAILS`: inloggen met Google op het dashboard (zie "Inloggen").
-- `DASHBOARD_PASSWORD`: wachtwoord van het dashboard als er geen Google-login is. Kies een lang, willekeurig wachtwoord.
+- `DASHBOARD_PASSWORD`: wachtwoord van het dashboard, als reserve naast de Google-login of als enige login. Kies een lang, willekeurig wachtwoord.
 - `MAX_PAGES`: vangnet tegen eindeloze crawls (standaard 1000). De crawl negeert zoekparameters en volgt enkel links op hetzelfde domein.
 
 ## Beveiliging

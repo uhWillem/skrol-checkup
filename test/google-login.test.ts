@@ -42,7 +42,7 @@ before(async () => {
     DASHBOARD_EMAILS: "daan@skrol.be, Willem.Verdoodt@gmail.com",
     GOOGLE_AUTH_URL: `${googleOrigin}/auth`,
     GOOGLE_TOKEN_URL: `${googleOrigin}/token`,
-    // Met een Google-login telt het wachtwoord niet meer.
+    // Het wachtwoord blijft werken als reserve.
     DASHBOARD_PASSWORD: "pw",
   });
   config.port = 0;
@@ -69,15 +69,71 @@ async function login(code: string, next = "/dashboard") {
   return { location, callback, session };
 }
 
-test("zonder login: naar de loginpagina, ook met het wachtwoord", async () => {
+test("zonder login: naar de loginpagina", async () => {
   const page = await get("/dashboard");
   assert.equal(page.status, 302);
   assert.equal(page.headers.get("location"), "/dashboard/login?next=%2Fdashboard");
   assert.equal((await get("/dashboard/api/jobs")).status, 401);
   const pdf = await get("/dashboard/jobs/job_20261118_aaaaaaaa/rapport.pdf");
   assert.equal(pdf.headers.get("location"), "/dashboard/login?next=%2Fdashboard%2Fjobs%2Fjob_20261118_aaaaaaaa%2Frapport.pdf");
-  const basic = await get("/dashboard", { authorization: `Basic ${Buffer.from("x:pw").toString("base64")}` });
-  assert.equal(basic.status, 302);
+  const wrong = await get("/dashboard", { authorization: `Basic ${Buffer.from("x:fout").toString("base64")}` });
+  assert.equal(wrong.status, 302);
+});
+
+test("het reservewachtwoord werkt als Basic Auth, bv. voor scripts", async () => {
+  const auth = { authorization: `Basic ${Buffer.from("x:pw").toString("base64")}` };
+  assert.equal((await get("/dashboard", auth)).status, 200);
+  assert.equal((await get("/dashboard/api/jobs", auth)).status, 200);
+});
+
+const postPassword = (password: string, next = "/dashboard") =>
+  fetch(`${base}/dashboard/login/wachtwoord`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ wachtwoord: password, next }),
+    redirect: "manual",
+  });
+
+test("inloggen met het reservewachtwoord op de loginpagina", async () => {
+  const page = await (await get("/dashboard/login?next=%2Fdashboard")).text();
+  assert.ok(page.includes('action="/dashboard/login/wachtwoord"'));
+  assert.ok(page.includes("Inloggen met het reservewachtwoord"));
+
+  const wrong = await postPassword("fout");
+  assert.equal(wrong.status, 401);
+  assert.ok((await wrong.text()).includes("Dat wachtwoord klopt niet."));
+  assert.ok(!wrong.headers.getSetCookie().some((c) => c.startsWith("checkup_sessie=")));
+
+  const ok = await postPassword("pw", "/dashboard/jobs/job_20261118_aaaaaaaa/bevindingen.csv");
+  assert.equal(ok.status, 302);
+  assert.equal(ok.headers.get("location"), "/dashboard/jobs/job_20261118_aaaaaaaa/bevindingen.csv");
+  const session = pair(ok.headers.getSetCookie().find((c) => c.startsWith("checkup_sessie="))!);
+  const dashboard = await get("/dashboard", { cookie: session });
+  assert.equal(dashboard.status, 200);
+  assert.ok((await dashboard.text()).includes("Ingelogd met het wachtwoord"));
+  assert.equal((await postPassword("pw", "https://kwaad.example/")).headers.get("location"), "/dashboard");
+
+  // Een ander wachtwoord in Coolify maakt de sessies met het oude wachtwoord ongeldig.
+  const config = app.store["config"];
+  config.dashboardPassword = "nieuw";
+  try {
+    assert.equal((await get("/dashboard", { cookie: session })).status, 302);
+  } finally {
+    config.dashboardPassword = "pw";
+  }
+  assert.equal((await get("/dashboard", { cookie: session })).status, 200);
+});
+
+test("zonder DASHBOARD_PASSWORD enkel Google", async () => {
+  const config = app.store["config"];
+  config.dashboardPassword = "";
+  try {
+    assert.ok(!(await (await get("/dashboard/login")).text()).includes("reservewachtwoord"));
+    assert.equal((await postPassword("")).status, 404);
+    assert.equal((await get("/dashboard", { authorization: `Basic ${Buffer.from("x:").toString("base64")}` })).status, 302);
+  } finally {
+    config.dashboardPassword = "pw";
+  }
 });
 
 test("de loginpagina toont de knop", async () => {

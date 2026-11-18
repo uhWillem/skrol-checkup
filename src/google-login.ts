@@ -5,6 +5,7 @@ import type { Config } from "./config.js";
 // Inloggen met Google voor het dashboard (OAuth 2.0 met PKCE). Wie in DASHBOARD_EMAILS staat, krijgt een
 // ondertekend sessiecookie. Er is geen database: het cookie bevat het e-mailadres en de vervaldatum, ondertekend
 // met een sleutel afgeleid van GOOGLE_CLIENT_SECRET. Een ander secret maakt dus alle sessies ongeldig.
+// Het reservewachtwoord (DASHBOARD_PASSWORD) geeft een sessie zonder e-mailadres; een ander wachtwoord maakt die ongeldig.
 
 export const CALLBACK_PATH = "/dashboard/auth/callback";
 const SESSION_COOKIE = "checkup_sessie";
@@ -53,14 +54,30 @@ function cookie(name: string, value: string, maxAge: number, secure: boolean): s
   return `${name}=${value}; Path=/dashboard; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
 }
 
+/** Wie ingelogd is: het e-mailadres van Google, of "wachtwoord" voor wie met het reservewachtwoord inlogde. */
+export type SessionUser = { email: string } | { password: true };
+
+/** Vingerafdruk van het wachtwoord: zonder de sleutel niet te raden of na te maken. */
+function passwordMark(config: Config): string {
+  return createHmac("sha256", signingKey(config)).update(`wachtwoord|${config.dashboardPassword}`).digest("base64url").slice(0, 22);
+}
+
 /**
- * E-mailadres van wie ingelogd is, of null. Wie intussen uit DASHBOARD_EMAILS gehaald is, is meteen niet
- * meer ingelogd, ook met een geldig cookie.
+ * Wie ingelogd is, of null. Wie intussen uit DASHBOARD_EMAILS gehaald is, is meteen niet meer ingelogd, ook met
+ * een geldig cookie; een sessie met het wachtwoord vervalt zodra DASHBOARD_PASSWORD verandert of leeg is.
  */
-export function sessionEmail(req: IncomingMessage, config: Config): string | null {
-  const session = unsign<{ e: string; x: number }>(readCookie(req, SESSION_COOKIE), config);
-  if (!session || typeof session.e !== "string") return null;
-  return emailAllowed(session.e, config.dashboardEmails) ? session.e : null;
+export function sessionUser(req: IncomingMessage, config: Config): SessionUser | null {
+  const session = unsign<{ e?: string; p?: string; x: number }>(readCookie(req, SESSION_COOKIE), config);
+  if (!session) return null;
+  if (typeof session.e === "string") return emailAllowed(session.e, config.dashboardEmails) ? { email: session.e } : null;
+  if (typeof session.p === "string" && config.dashboardPassword && session.p === passwordMark(config)) return { password: true };
+  return null;
+}
+
+/** Sessiecookie voor wie met het reservewachtwoord inlogt. */
+export function passwordSessionCookie(config: Config, baseUrl: string): string {
+  const session = sign({ p: passwordMark(config), x: Math.floor(Date.now() / 1000) + SESSION_SECONDS }, config);
+  return cookie(SESSION_COOKIE, session, SESSION_SECONDS, baseUrl.startsWith("https://"));
 }
 
 /** Enkel terug naar een pagina van het dashboard: geen open redirect naar een andere site. */
