@@ -43,8 +43,25 @@ export interface Config {
   publicUrl: string;
   /** Aantal dagen dat screenshots bewaard blijven. */
   screenshotDays: number;
-  /** Wachtwoord van het dashboard op /dashboard; leeg = geen dashboard. */
+  /** Wachtwoord van het dashboard op /dashboard, als er geen Google-login is; leeg = geen wachtwoord. */
   dashboardPassword: string;
+  /** OAuth-client van Google voor de login op het dashboard; beide ingevuld = inloggen met Google. */
+  googleClientId: string;
+  googleClientSecret: string;
+  /** Wie mag inloggen met Google: e-mailadressen, of een domein (bv. skrol.be) voor iedereen op dat domein. */
+  dashboardEmails: string[];
+  /** Adressen van Google; enkel anders in tests. */
+  googleAuthUrl: string;
+  googleTokenUrl: string;
+}
+
+export function googleLoginEnabled(config: Config): boolean {
+  return !!(config.googleClientId && config.googleClientSecret);
+}
+
+/** Het dashboard staat aan met een Google-login of met een wachtwoord. */
+export function dashboardEnabled(config: Config): boolean {
+  return googleLoginEnabled(config) || !!config.dashboardPassword;
 }
 
 function list(value: string | undefined, fallback: string[]): string[] {
@@ -95,5 +112,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicUrl: (env.PUBLIC_URL ?? "").replace(/\/$/, ""),
     screenshotDays: int(env.SCREENSHOT_DAYS, 180),
     dashboardPassword: env.DASHBOARD_PASSWORD ?? "",
+    googleClientId: (env.GOOGLE_CLIENT_ID ?? "").trim(),
+    googleClientSecret: (env.GOOGLE_CLIENT_SECRET ?? "").trim(),
+    dashboardEmails: list(env.DASHBOARD_EMAILS, []).map((e) => e.replace(/^@/, "")),
+    googleAuthUrl: env.GOOGLE_AUTH_URL ?? "https://accounts.google.com/o/oauth2/v2/auth",
+    googleTokenUrl: env.GOOGLE_TOKEN_URL ?? "https://oauth2.googleapis.com/token",
   };
 }

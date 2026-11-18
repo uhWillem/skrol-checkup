@@ -1,14 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { Config } from "./config.js";
+import { dashboardEnabled, type Config } from "./config.js";
 import type { JobStore } from "./jobs.js";
-import { CHECKS, type Finding } from "./types.js";
+import { CHECKS, type Finding, type Job } from "./types.js";
 import type { UrlGuard } from "./url-guard.js";
 import { normalizeDomain } from "./discover.js";
 import { takeScreenshot } from "./screenshot.js";
 import { SCREENSHOT_ROUTE, type ScreenshotStore } from "./screenshot-store.js";
 
-export const VERSION = "0.8.0";
+export const VERSION = "0.9.0";
 const MAX_PAGES_SHOWN = 20;
 
 /** Welke checklist-punten deze versie automatisch controleert; controles die niet gelopen hebben tellen niet mee. */
@@ -47,6 +47,34 @@ export function createMcpServer(
   baseUrl = config.publicUrl,
 ): McpServer {
   const server = new McpServer({ name: "skrol-checkup", version: VERSION });
+  const dashboard = dashboardEnabled(config) && baseUrl ? `${baseUrl}/dashboard` : undefined;
+
+  /** Links naar het rapport in het dashboard; wie ze opent, moet inloggen op het dashboard. */
+  const report = (job: Job) =>
+    job.status === "done" && dashboard
+      ? { pdf: `${dashboard}/jobs/${job.id}/rapport.pdf`, csv: `${dashboard}/jobs/${job.id}/bevindingen.csv` }
+      : undefined;
+
+  /** Een job zoals list_checkups, cancel_checkup en restart_checkup ze tonen. */
+  const view = (job: Job) => {
+    const active = job.status === "queued" || job.status === "running";
+    const links = report(job);
+    const position = store.queuePosition(job.id);
+    return {
+      job_id: job.id,
+      url: job.url,
+      ...(job.liveDomain ? { liveDomain: job.liveDomain } : {}),
+      status: job.status,
+      createdAt: job.createdAt,
+      ...(job.startedAt ? { startedAt: job.startedAt } : {}),
+      ...(job.finishedAt ? { finishedAt: job.finishedAt } : {}),
+      ...(active ? { progress: job.progress } : {}),
+      ...(position ? { queuePosition: position } : {}),
+      ...(job.error ? { error: job.error } : {}),
+      ...(job.summary ? { pages: job.summary.pages, findings: job.summary.findings, byHint: job.summary.byHint } : {}),
+      ...(links ? { report: links } : {}),
+    };
+  };
 
   server.registerTool(
     "start_checkup",
@@ -97,8 +125,15 @@ export function createMcpServer(
     async ({ job_id }) => {
       const job = store.get(job_id);
       if (!job) return fail(`Onbekende job: ${job_id}`);
-      if (job.status !== "done") return json(job);
-      return json({ ...job, version: VERSION, coverage: coverage((job.summary?.skipped ?? []).map((s) => s.check)) });
+      const position = store.queuePosition(job.id);
+      if (job.status !== "done") return json(position ? { ...job, queuePosition: position } : job);
+      const links = report(job);
+      return json({
+        ...job,
+        version: VERSION,
+        ...(links ? { report: links } : {}),
+        coverage: coverage((job.summary?.skipped ?? []).map((s) => s.check)),
+      });
     },
   );
 
@@ -208,6 +243,79 @@ export function createMcpServer(
       } catch (error) {
         return fail(`Screenshot mislukt: ${(error as Error).message.split("\n")[0]}`);
       }
+    },
+  );
+
+  server.registerTool(
+    "list_checkups",
+    {
+      title: "Check-ups op de server",
+      description:
+        "Geeft de check-ups op de server, de nieuwste eerst: lopende, in de wachtrij (met queuePosition) en afgelopen " +
+        "(done, failed of cancelled), met voortgang, foutmelding, aantal bevindingen per prioriteit en voor afgeronde check-ups " +
+        "links naar het rapport als PDF en CSV (report; wie ze opent, moet inloggen op het dashboard). " +
+        "Filter op status of op een deel van de URL, bv. de naam van de klant. Gebruik dit om een job-ID terug te vinden, " +
+        "te zien wat er loopt of in de wachtrij staat, of een vorige check-up op te zoeken.",
+      inputSchema: {
+        status: z.enum(["queued", "running", "done", "failed", "cancelled"]).optional(),
+        site: z.string().max(200).optional().describe("Deel van de URL, bv. klant.webflow.io of klant"),
+        limit: z.number().int().min(1).max(100).optional().describe("Standaard 20"),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ status, site, limit }) => {
+      const needle = site?.trim().toLowerCase();
+      const all = store
+        .list()
+        .filter((j) => !status || j.status === status)
+        .filter((j) => !needle || j.url.toLowerCase().includes(needle) || (j.liveDomain ?? "").includes(needle));
+      const shown = all.slice(0, limit ?? 20);
+      return json({ total: all.length, shown: shown.length, ...(dashboard ? { dashboard } : {}), checkups: shown.map(view) });
+    },
+  );
+
+  server.registerTool(
+    "cancel_checkup",
+    {
+      title: "Check-up annuleren",
+      description:
+        "Stopt een check-up die loopt of in de wachtrij staat. Doe dit enkel als de gebruiker erom vraagt, bv. " +
+        "\"stop de check-up van klant.webflow.io\", of als een check-up vastzit en de gebruiker akkoord gaat. " +
+        "Een lopende check-up stopt binnen enkele seconden en de volgende in de wachtrij start. " +
+        "Een geannuleerde check-up heeft geen resultaten; start ze opnieuw met restart_checkup.",
+      inputSchema: { job_id: z.string().describe("ID uit start_checkup of list_checkups") },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ job_id }) => {
+      const job = store.get(job_id);
+      if (!job) return fail(`Onbekende job: ${job_id}`);
+      if (!(await store.cancel(job_id))) return fail(`Deze check-up is al afgelopen (status: ${job.status}); er valt niets te annuleren.`);
+      return json({ ...view(job), message: "Check-up geannuleerd." });
+    },
+  );
+
+  server.registerTool(
+    "restart_checkup",
+    {
+      title: "Check-up opnieuw starten",
+      description:
+        "Start een nieuwe check-up met dezelfde URL en hetzelfde live domein als een afgelopen check-up (done, failed of cancelled), " +
+        "bv. na een herstart van de server, na een annulering of na fixes. Geeft een nieuw job-ID terug; de oude check-up blijft bestaan. " +
+        "Volg de nieuwe op met get_checkup_status.",
+      inputSchema: { job_id: z.string().describe("ID van de check-up die opnieuw moet") },
+      annotations: { readOnlyHint: true, openWorldHint: true, idempotentHint: false },
+    },
+    async ({ job_id }) => {
+      const old = store.get(job_id);
+      if (!old) return fail(`Onbekende job: ${job_id}`);
+      if (old.status === "queued" || old.status === "running") {
+        return fail(`Deze check-up loopt nog (status: ${old.status}). Wacht tot ze klaar is, of annuleer ze eerst met cancel_checkup.`);
+      }
+      if (!guard.isAllowedPage(old.url)) {
+        return fail(`Domein niet meer toegestaan: ${new URL(old.url).hostname}. Toegestaan: ${config.allowedDomains.join(", ")}.`);
+      }
+      const job = await store.start(old.url, { liveDomain: old.liveDomain });
+      return json({ ...view(job), restartOf: old.id, message: "Nieuwe check-up gestart. Vraag de status op met get_checkup_status." });
     },
   );
 

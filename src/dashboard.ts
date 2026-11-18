@@ -1,12 +1,14 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Config } from "./config.js";
+import { googleLoginEnabled, type Config } from "./config.js";
+import { finishLogin, logoutCookie, safeNext, sessionEmail, startLogin } from "./google-login.js";
 import type { JobStore } from "./jobs.js";
 import { findingsCsv, renderPdf, reportFileName, reportHtml } from "./report.js";
 import type { Job } from "./types.js";
 
 // Dashboard op /dashboard: lopende en vorige check-ups bekijken, annuleren en het rapport downloaden.
-// Beveiligd met HTTP Basic Auth: de browser vraagt het wachtwoord uit DASHBOARD_PASSWORD (de gebruikersnaam maakt niet uit).
+// Beveiligd met een Google-login (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET en DASHBOARD_EMAILS), of anders met
+// HTTP Basic Auth: de browser vraagt het wachtwoord uit DASHBOARD_PASSWORD (de gebruikersnaam maakt niet uit).
 
 export const DASHBOARD_PATH = "/dashboard";
 const JOB_ID = /^job_\d{8}_[0-9a-f]{8}$/;
@@ -70,6 +72,26 @@ const BASE_HEADERS = {
   "x-frame-options": "DENY",
 };
 
+function esc(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+function redirect(res: ServerResponse, location: string, setCookies: string[] = []): void {
+  res.writeHead(302, { ...BASE_HEADERS, location, ...(setCookies.length ? { "set-cookie": setCookies } : {}) });
+  res.end();
+}
+
+function sendHtml(res: ServerResponse, status: number, html: (nonce: string) => string, setCookies: string[] = []): void {
+  const nonce = randomBytes(16).toString("base64");
+  res.writeHead(status, {
+    ...BASE_HEADERS,
+    "content-type": "text/html; charset=utf-8",
+    "content-security-policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+    ...(setCookies.length ? { "set-cookie": setCookies } : {}),
+  });
+  res.end(html(nonce));
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { ...BASE_HEADERS, "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
@@ -99,37 +121,60 @@ export async function handleDashboard(
   url: URL,
   store: JobStore,
   config: Config,
+  /** Publiek adres van de server, voor de terugkeer-URL van Google. */
+  baseUrl: string,
 ): Promise<void> {
-  if (!config.dashboardPassword) return sendJson(res, 404, { error: "niet gevonden" });
-
-  const ip = clientIp(req);
-  if (blocked(ip)) {
-    res.writeHead(429, { ...BASE_HEADERS, "content-type": "text/plain; charset=utf-8", "retry-after": "900" });
-    return void res.end("Te veel foute wachtwoorden. Probeer het over een kwartier opnieuw.");
-  }
-  const given = passwordFrom(req);
-  if (given === null || !samePassword(given, config.dashboardPassword)) {
-    // De eerste aanvraag van een browser komt altijd zonder wachtwoord; die telt niet als poging.
-    if (given !== null) recordFailure(ip);
-    res.writeHead(401, {
-      ...BASE_HEADERS,
-      "content-type": "text/plain; charset=utf-8",
-      "www-authenticate": 'Basic realm="Skrol check-up", charset="UTF-8"',
-    });
-    return void res.end("Wachtwoord vereist.");
-  }
-
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const method = req.method ?? "GET";
+  let user: string | undefined;
+
+  if (googleLoginEnabled(config)) {
+    const signedIn = sessionEmail(req, config);
+    if (path === `${DASHBOARD_PATH}/login` && method === "GET") {
+      const next = safeNext(url.searchParams.get("next"));
+      if (signedIn) return redirect(res, next);
+      const notice = url.searchParams.has("uit") ? "Je bent uitgelogd." : undefined;
+      const error = config.dashboardEmails.length === 0 ? "Er mag nog niemand inloggen: DASHBOARD_EMAILS is leeg." : undefined;
+      return sendHtml(res, 200, (nonce) => loginPage(nonce, next, { notice, error }));
+    }
+    if (path === `${DASHBOARD_PATH}/login/google` && method === "GET") {
+      const { location, setCookie } = startLogin(config, baseUrl, safeNext(url.searchParams.get("next")));
+      return redirect(res, location, [setCookie]);
+    }
+    if (path === `${DASHBOARD_PATH}/auth/callback` && method === "GET") {
+      const result = await finishLogin(req, url, config, baseUrl);
+      if (!result.ok) return sendHtml(res, result.status, (nonce) => loginPage(nonce, "/dashboard", { error: result.error }), result.setCookies);
+      return redirect(res, result.next, result.setCookies);
+    }
+    if (path === `${DASHBOARD_PATH}/logout` && method === "GET") {
+      return redirect(res, `${DASHBOARD_PATH}/login?uit=1`, [logoutCookie(baseUrl)]);
+    }
+    if (!signedIn) {
+      if (path.startsWith(`${DASHBOARD_PATH}/api/`)) return sendJson(res, 401, { error: "Niet ingelogd." });
+      return redirect(res, `${DASHBOARD_PATH}/login?next=${encodeURIComponent(url.pathname + url.search)}`);
+    }
+    user = signedIn;
+  } else if (config.dashboardPassword) {
+    const ip = clientIp(req);
+    if (blocked(ip)) {
+      res.writeHead(429, { ...BASE_HEADERS, "content-type": "text/plain; charset=utf-8", "retry-after": "900" });
+      return void res.end("Te veel foute wachtwoorden. Probeer het over een kwartier opnieuw.");
+    }
+    const given = passwordFrom(req);
+    if (given === null || !samePassword(given, config.dashboardPassword)) {
+      // De eerste aanvraag van een browser komt altijd zonder wachtwoord; die telt niet als poging.
+      if (given !== null) recordFailure(ip);
+      res.writeHead(401, {
+        ...BASE_HEADERS,
+        "content-type": "text/plain; charset=utf-8",
+        "www-authenticate": 'Basic realm="Skrol check-up", charset="UTF-8"',
+      });
+      return void res.end("Wachtwoord vereist.");
+    }
+  } else return sendJson(res, 404, { error: "niet gevonden" });
 
   if (path === DASHBOARD_PATH && (method === "GET" || method === "HEAD")) {
-    const nonce = randomBytes(16).toString("base64");
-    res.writeHead(200, {
-      ...BASE_HEADERS,
-      "content-type": "text/html; charset=utf-8",
-      "content-security-policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
-    });
-    return void res.end(method === "HEAD" ? undefined : dashboardPage(nonce));
+    return sendHtml(res, 200, (nonce) => (method === "HEAD" ? "" : dashboardPage(nonce, user)));
   }
 
   if (path === `${DASHBOARD_PATH}/api/jobs` && method === "GET") {
@@ -176,7 +221,45 @@ export async function handleDashboard(
   return sendJson(res, 404, { error: "niet gevonden" });
 }
 
-function dashboardPage(nonce: string): string {
+function loginPage(nonce: string, next: string, message: { notice?: string; error?: string }): string {
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Inloggen | Skrol check-ups</title>
+<link rel="icon" href="data:,">
+<style nonce="${nonce}">
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: #1d2126; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 18vh 24px 64px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.015em; }
+  p { color: #646b75; margin: 0 0 28px; }
+  .message { color: #1d2126; background: #f5f6f8; padding: 10px 14px; border-radius: 6px; }
+  .message.bad { color: #b4372c; background: #fbeceb; }
+  a.google { display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 6px; border: 1px solid #cfd3d9; color: #1d2126; text-decoration: none; font-weight: 500; }
+  a.google:hover { border-color: #9da3ab; }
+  a.google svg { width: 18px; height: 18px; }
+  :focus-visible { outline: 2px solid #2f62d6; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Check-ups</h1>
+  <p>Log in met je Google-account om de check-ups van de Skrol-browsertool te volgen, te stoppen en het rapport te downloaden.</p>
+  ${message.error ? `<p class="message bad" role="alert">${esc(message.error)}</p>` : ""}
+  ${message.notice ? `<p class="message" role="status">${esc(message.notice)}</p>` : ""}
+  <a class="google" href="/dashboard/login/google?next=${esc(encodeURIComponent(next))}">
+    <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.2l7.9 6.2C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.8c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C1 16.6 0 20.2 0 24s1 7.4 2.7 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.8c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>
+    Inloggen met Google
+  </a>
+</main>
+</body>
+</html>`;
+}
+
+function dashboardPage(nonce: string, user?: string): string {
   return `<!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -198,6 +281,8 @@ function dashboardPage(nonce: string): string {
   h1 { font-size: 30px; line-height: 1.2; margin: 0; letter-spacing: -0.015em; }
   .intro { color: var(--muted); margin: 6px 0 36px; max-width: 68ch; }
   .updated { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .updated .user { margin-left: 14px; color: var(--ink); }
+  .updated a { margin-left: 10px; }
   h2 { font-size: 18px; margin: 0; }
   h2 .count { color: var(--muted); font-weight: 400; }
   section { margin-bottom: 44px; }
@@ -275,7 +360,7 @@ function dashboardPage(nonce: string): string {
 <main>
   <header>
     <h1>Check-ups</h1>
-    <span class="updated" id="updated"></span>
+    <span class="updated"><span id="updated"></span>${user ? ` <span class="user">${esc(user)}</span> <a href="/dashboard/logout">Uitloggen</a>` : ""}</span>
   </header>
   <p class="intro">Alle check-ups van de Skrol-browsertool. Een nieuwe check-up start je in Claude met de skill webflow-checkup; hier volg je ze op, stop je er een en download je het rapport.</p>
   <p class="notice" id="notice" role="status" aria-live="polite"></p>
@@ -374,6 +459,7 @@ function cancelButton(job) {
     try {
       const res = await fetch("/dashboard/api/jobs/" + encodeURIComponent(job.id) + "/cancel", { method: "POST", headers: { "x-dashboard": "1" } });
       const body = await res.json().catch(() => ({}));
+      if (res.status === 401) { location.href = "/dashboard/login?next=%2Fdashboard"; return; }
       if (res.ok) notice("Check-up van " + host(job.url) + " geannuleerd.");
       else notice("Annuleren lukte niet: " + (body.error || "fout " + res.status), true);
     } catch (e) {
@@ -488,6 +574,10 @@ async function load() {
   clearTimeout(timer);
   try {
     const res = await fetch("/dashboard/api/jobs", { cache: "no-store" });
+    if (res.status === 401) {
+      location.href = "/dashboard/login?next=%2Fdashboard";
+      return;
+    }
     if (!res.ok) throw new Error("fout " + res.status);
     jobs = (await res.json()).jobs;
     document.getElementById("updated").textContent = "Bijgewerkt om " + TIME.format(new Date());

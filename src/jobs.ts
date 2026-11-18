@@ -58,6 +58,12 @@ export class JobStore {
     return this.jobs.get(id);
   }
 
+  /** Plaats in de wachtrij (1 = volgende), of undefined als de job niet wacht. */
+  queuePosition(id: string): number | undefined {
+    const index = this.waiting.indexOf(id);
+    return index === -1 ? undefined : index + 1;
+  }
+
   /** Alle jobs, de nieuwste eerst. */
   list(): Job[] {
     return [...this.jobs.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));

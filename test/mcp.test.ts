@@ -26,7 +26,7 @@ function parse(result: Awaited<ReturnType<Client["callTool"]>>) {
 before(async () => {
   external = await startExternal();
   site = await startSite(external.origin);
-  const config = await testConfig({ API_KEY, MCP_PATH: "/mcp-test" });
+  const config = await testConfig({ API_KEY, MCP_PATH: "/mcp-test", DASHBOARD_PASSWORD: "pw" });
   config.port = 0;
   config.host = "127.0.0.1";
   // De oude site van klant.be staat in deze test nergens: zo gaat de test nooit het internet op.
@@ -44,10 +44,19 @@ test("zonder API-sleutel geweigerd", async () => {
   await assert.rejects(connect({}));
 });
 
-test("toont de drie tools", async () => {
+test("toont de tools", async () => {
   const client = await connect();
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name).sort(), ["get_checkup_status", "get_findings", "get_screenshot", "list_pages", "start_checkup"]);
+  assert.deepEqual(tools.map((t) => t.name).sort(), [
+    "cancel_checkup",
+    "get_checkup_status",
+    "get_findings",
+    "get_screenshot",
+    "list_checkups",
+    "list_pages",
+    "restart_checkup",
+    "start_checkup",
+  ]);
   await client.close();
 });
 
@@ -89,6 +98,48 @@ test("volledige check-up: starten, opvolgen, bevindingen ophalen", async () => {
   assert.equal(pages.total, 9);
   assert.ok(pages.pages.some((p: { path: string; status: number }) => p.path === "/bestaat-niet" && p.status === 404));
   assert.ok(pages.sections.some((s: { section: string }) => s.section === "/layout"));
+  await client.close();
+});
+
+test("check-ups beheren: lijst, annuleren en opnieuw starten", async () => {
+  const client = await connect();
+  const call = async (name: string, args: Record<string, unknown>) => client.callTool({ name, arguments: args });
+
+  // De afgeronde check-up uit de vorige test, met links naar het rapport in het dashboard.
+  const done = parse(await call("list_checkups", { status: "done" }));
+  assert.ok(done.total >= 1);
+  assert.equal(done.dashboard, `http://127.0.0.1:${mcp.port}/dashboard`);
+  const finished = done.checkups[0];
+  assert.match(finished.report.pdf, /\/dashboard\/jobs\/job_\w+\/rapport\.pdf$/);
+  assert.ok(finished.findings > 0);
+  const status = parse(await call("get_checkup_status", { job_id: finished.job_id }));
+  assert.equal(status.report.csv, finished.report.csv);
+  assert.equal((await call("cancel_checkup", { job_id: finished.job_id })).isError, true, "al afgelopen");
+
+  const running = parse(await call("start_checkup", { url: `${site.origin}/`, live_domain: "klant.be" }));
+  const queued = parse(await call("start_checkup", { url: `${site.origin}/` }));
+  const list = parse(await call("list_checkups", { site: "127.0.0.1", limit: 2 }));
+  assert.equal(list.shown, 2);
+  assert.deepEqual(list.checkups.map((j: { job_id: string }) => j.job_id), [queued.job_id, running.job_id]);
+  assert.equal(list.checkups[0].queuePosition, 1);
+  assert.equal((await call("restart_checkup", { job_id: queued.job_id })).isError, true, "loopt nog");
+
+  assert.equal(parse(await call("cancel_checkup", { job_id: queued.job_id })).status, "cancelled");
+  assert.equal(parse(await call("cancel_checkup", { job_id: running.job_id })).status, "cancelled");
+  const findings = await call("get_findings", { job_id: running.job_id });
+  assert.equal(findings.isError, true);
+  assert.match((findings.content as Array<{ text: string }>)[0].text, /geannuleerd/);
+
+  const again = parse(await call("restart_checkup", { job_id: running.job_id }));
+  assert.notEqual(again.job_id, running.job_id);
+  assert.equal(again.restartOf, running.job_id);
+  assert.equal(again.url, `${site.origin}/`);
+  assert.equal(again.liveDomain, "klant.be");
+  assert.equal(parse(await call("cancel_checkup", { job_id: again.job_id })).status, "cancelled");
+
+  const cancelled = parse(await call("list_checkups", { status: "cancelled" }));
+  assert.equal(cancelled.total, 3);
+  assert.equal((await call("cancel_checkup", { job_id: "job_bestaat_niet" })).isError, true);
   await client.close();
 });
 

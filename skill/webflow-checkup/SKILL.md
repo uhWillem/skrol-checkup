@@ -5,7 +5,7 @@ description: Voert de pre-launch check-up van een Webflow-site uit met de Skrol-
 
 # Webflow check-up
 
-Je voert de check-up uit met de tools van de Skrol-browsertool (`start_checkup`, `get_checkup_status`, `get_findings`, `list_pages`, `get_screenshot`) en schrijft daarna een bugrapport voor het team van Skrol. Het team beslist wat er gefixt wordt.
+Je voert de check-up uit met de tools van de Skrol-browsertool (`start_checkup`, `get_checkup_status`, `get_findings`, `list_pages`, `get_screenshot`) en schrijft daarna een bugrapport voor het team van Skrol. Het team beslist wat er gefixt wordt. Met `list_checkups`, `cancel_checkup` en `restart_checkup` beheer je de check-ups op de server (zie "Check-ups beheren").
 
 Het resultaat is altijd een **doc** (Claude Docs), nooit enkel een antwoord in de chat: het team deelt het rapport, zet er opmerkingen bij en vinkt de afvinklijst af. In de chat zet je enkel een korte samenvatting (aantal bugs per prioriteit, de belangrijkste drie) en de link naar het doc.
 
@@ -19,6 +19,13 @@ Het resultaat is altijd een **doc** (Claude Docs), nooit enkel een antwoord in d
 6. **Pagina's bekijken.** Dit is het checklist-punt "Check on All Devices and Small Laptops". Haal `list_pages` op en bekijk de homepage en één pagina per sectie op 1440, 992 en 390 px; vraag de volgende delen op (`part`) als de pagina langer is. Kijk naar wat de metingen niet zien: elementen die verspringen of verdwijnen, witruimte die niet klopt, afbeeldingen die verkeerd uitgesneden zijn, een menu of footer die niet past. Meld enkel duidelijke fouten, met de link naar het screenshot als bewijs. Houd het bij een twintigtal screenshots. Sla je deze stap over, zet het punt dan op de afvinklijst.
 7. **Rapport schrijven** als doc, volgens "Rapportformaat" hieronder. Maak het doc aan met de titel "Check-up {site} — {datum}" en één blok per soort, open het, en vul daarna soort per soort: de overzichtstabel, dan per soort de inleiding, de tabel en de detailtabellen. Een tabel in markdown kan geen opsomming in een cel bevatten: zet daarna de cellen met meerdere punten om naar een opsomming (de cel vervangen met een markdown-lijst), zet in elke cel van de kolom Opgelost een afvinkvakje (de cel vervangen met `- [ ] `) en geef als laatste om de andere rij de grijze kleur (zie "Afspraken"). Is er geen docs-tool in de chat, maak dan een artifact (een pagina) met dezelfde inhoud. Schrijf het rapport nooit enkel in de chat.
 8. **Fixes** en andere aanpassingen in Webflow enkel als de gebruiker erom vraagt, bv. "fix I3, R1 en L2". Zie "Fixes" hieronder.
+
+## Check-ups beheren
+
+- **Overzicht.** Vraagt de gebruiker wat er loopt, wat er in de wachtrij staat of naar een vorige check-up, gebruik `list_checkups` (filter op `status` of `site`). Antwoord kort: site, status, voortgang of plaats in de wachtrij, en bij afgeronde check-ups het aantal bevindingen per prioriteit. Geef de links uit `report` (PDF en CSV) als de gebruiker het rapport wil downloaden; wie ze opent, moet inloggen op het dashboard.
+- **Verder met een vorige check-up.** Wil de gebruiker het rapport van een check-up die al klaar is, zoek ze dan op met `list_checkups` en ga verder vanaf stap 4 met haar `job_id`, zonder een nieuwe te starten.
+- **Annuleren.** `cancel_checkup` enkel als de gebruiker erom vraagt, bv. "stop de check-up van klant.webflow.io". Lopen er meerdere voor dezelfde site, of is niet duidelijk welke bedoeld is, vraag het dan eerst. Zie je zelf een check-up die al veel langer loopt dan normaal, meld dat dan en stel voor om ze te annuleren; doe het niet zelf.
+- **Opnieuw starten.** `restart_checkup` voor een check-up die mislukt of geannuleerd is (bv. "De server is herstart tijdens deze check-up"), of om na fixes opnieuw te controleren. Je krijgt een nieuw `job_id`; volg dat op zoals in stap 3.
 
 ## Regels voor het rapport
 

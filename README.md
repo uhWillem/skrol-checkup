@@ -2,7 +2,7 @@
 
 MCP-server voor de Webflow check-up bot van Skrol. De server crawlt een site in een headless Chromium, voert vaste controles uit uit de pre-launch checklist, en geeft de bevindingen aan Claude. Er zit geen AI in de server: dezelfde site geeft elke keer dezelfde bevindingen. Claude beoordeelt en schrijft het rapport.
 
-Zie het technisch plan voor de volledige architectuur. Dit is versie 0.8: bijgestuurd na de eerste echte check-up (in4care), met een dashboard, lay-outcontroles, screenshots met een vaste link, navigatie, hoverstijlen, fonts, standaardstijlen van Webflow, SEO, een vergelijking met de oude site bij een migratie, en de Webflow-lezer voor het CMS en de projectinstellingen.
+Zie het technisch plan voor de volledige architectuur. Dit is versie 0.9: bijgestuurd na de eerste echte check-up (in4care), met een dashboard (Google-login, annuleren en rapporten, ook via MCP), lay-outcontroles, screenshots met een vaste link, navigatie, hoverstijlen, fonts, standaardstijlen van Webflow, SEO, een vergelijking met de oude site bij een migratie, en de Webflow-lezer voor het CMS en de projectinstellingen.
 
 ## Tools
 
@@ -13,16 +13,34 @@ Zie het technisch plan voor de volledige architectuur. Dit is versie 0.8: bijges
 | `get_findings` | Bevindingen, gesorteerd op prioriteit, te filteren op controle, pagina of prioriteit, per 100. |
 | `list_pages` | Alle gecontroleerde pagina's met statuscode, per sectie (bv. `/blog`). |
 | `get_screenshot` | Screenshot van een pagina op een schermbreedte: de volledige pagina in delen, of het stuk rond een element (`selector`) met het element omkaderd. Zo kijkt Claude lay-outbevindingen na en beoordeelt het pagina's. Elk screenshot krijgt een vaste link (`screenshotUrl`, `/screenshots/<id>.jpg`) die zonder API-sleutel opent, zodat het rapport ernaar kan linken. De id is 24 willekeurige tekens; na `SCREENSHOT_DAYS` dagen (standaard 180) wordt het beeld opgeruimd. |
+| `list_checkups` | Alle check-ups op de server, de nieuwste eerst, te filteren op status of site: voortgang, plaats in de wachtrij, foutmelding, bevindingen per prioriteit en links naar het rapport (PDF en CSV) in het dashboard. |
+| `cancel_checkup` | Stopt een check-up die loopt of in de wachtrij staat, net als de knop in het dashboard. Enkel op vraag van de gebruiker. |
+| `restart_checkup` | Start een afgelopen check-up (klaar, mislukt of geannuleerd) opnieuw met dezelfde URL en hetzelfde live domein, en geeft een nieuw job-ID. |
 
 ## Dashboard
 
 Op `/dashboard` staat een dashboard voor het team (het adres `/` verwijst ernaartoe):
 
-- **Nu bezig**: lopende check-ups met hun voortgang, en jobs in de wachtrij. Met **Annuleren** (twee keer klikken) stop je er een. Een job in de wachtrij verdwijnt meteen; bij een lopende check-up sluit de browser meteen en is de plaats binnen enkele seconden vrij voor de volgende. De status wordt `cancelled`; in Claude geven `get_findings` en `list_pages` dan "geannuleerd".
+- **Nu bezig**: lopende check-ups met hun voortgang, en jobs in de wachtrij. Met **Annuleren** (twee keer klikken) stop je er een. Een job in de wachtrij verdwijnt meteen; bij een lopende check-up sluit de browser meteen en is de plaats binnen enkele seconden vrij voor de volgende. De status wordt `cancelled`; in Claude geven `get_findings` en `list_pages` dan "geannuleerd". Vanuit de chat kan hetzelfde met `list_checkups`, `cancel_checkup` en `restart_checkup`.
 - **Vorige check-ups**: alle afgelopen check-ups, de nieuwste eerst, met duur, aantal pagina's, bevindingen per prioriteit en de foutmelding als een check-up mislukte. Te filteren op site.
 - **Rapport**: per afgeronde check-up een **PDF** met alle bevindingen per soort (zelfde indeling als het rapport van de skill) en een **CSV** met alle bevindingen voor Excel of Google Sheets (puntkomma's, UTF-8). Dit zijn de bevindingen zoals de tool ze vond, nog niet nagekeken: het bugrapport voor het team blijft het doc dat Claude maakt.
 
-De pagina vernieuwt vanzelf (elke 3 seconden zolang er iets loopt). Ze is beveiligd met het wachtwoord in `DASHBOARD_PASSWORD`: de browser vraagt een gebruikersnaam en wachtwoord, de gebruikersnaam maakt niet uit. Zonder `DASHBOARD_PASSWORD` staat het dashboard uit. Na 10 foute wachtwoorden binnen een kwartier krijgt dat adres een kwartier geen toegang.
+De pagina vernieuwt vanzelf (elke 3 seconden zolang er iets loopt).
+
+### Inloggen
+
+Met `GOOGLE_CLIENT_ID` en `GOOGLE_CLIENT_SECRET` log je in met Google. Enkel wie in `DASHBOARD_EMAILS` staat, komt binnen: e-mailadressen, of een domein (bv. `skrol.be`) voor iedereen op dat domein. Wie je uit de lijst haalt, is na een herstart van de app meteen buiten, ook met een sessie die nog loopt. Een sessie duurt 7 dagen.
+
+1. In Google Cloud Console: APIs & Services > Credentials > Create credentials > OAuth client ID, type Web application.
+2. Authorized redirect URI: `https://checkup.skrol.agency/dashboard/auth/callback` (of `PUBLIC_URL` + `/dashboard/auth/callback`).
+3. OAuth consent screen: met adressen buiten de eigen Google Workspace (bv. een gmail-adres) moet het type External zijn; zet de app dan op In production, of voeg die adressen toe als test users.
+4. Client ID en secret in Coolify bij `GOOGLE_CLIENT_ID` en `GOOGLE_CLIENT_SECRET`, de adressen bij `DASHBOARD_EMAILS`, en de app opnieuw deployen.
+
+De sessie zit in een ondertekend cookie (HttpOnly, SameSite=Lax), ondertekend met een sleutel afgeleid van het client secret: een nieuw secret logt iedereen uit. De login gebruikt state en PKCE, en na het inloggen gaat het enkel terug naar een pagina van het dashboard.
+
+Zonder Google-login is het dashboard beveiligd met het wachtwoord in `DASHBOARD_PASSWORD`: de browser vraagt een gebruikersnaam en wachtwoord, de gebruikersnaam maakt niet uit. Na 10 foute wachtwoorden binnen een kwartier krijgt dat adres een kwartier geen toegang. Met een Google-login telt het wachtwoord niet meer. Zonder beide staat het dashboard uit.
+
+De Claude-connector (`MCP_PATH`, `API_KEY`) staat los van de login op het dashboard.
 
 ### Verborgen elementen
 
@@ -128,7 +146,8 @@ Alle instellingen gaan via omgevingsvariabelen; zie `.env.example`. De belangrij
 - `ALLOWED_DOMAINS`: domeinen die de tool als pagina mag openen. Standaard `*.webflow.io`. Voeg klantdomeinen toe, bv. `*.webflow.io,klant.be`, of zet `*` om elk publiek domein toe te laten. Interne adressen (localhost, privé-IP's) blijven altijd geblokkeerd.
 - `MCP_PATH`: pad van de MCP-server. Kies een moeilijk te raden pad zolang er geen login is.
 - `API_KEY`: als ingesteld, moet elke aanroep `x-api-key: <sleutel>` of `Authorization: Bearer <sleutel>` meesturen.
-- `DASHBOARD_PASSWORD`: wachtwoord van het dashboard op `/dashboard`. Leeg = geen dashboard. Kies een lang, willekeurig wachtwoord.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DASHBOARD_EMAILS`: inloggen met Google op het dashboard (zie "Inloggen").
+- `DASHBOARD_PASSWORD`: wachtwoord van het dashboard als er geen Google-login is. Kies een lang, willekeurig wachtwoord.
 - `MAX_PAGES`: vangnet tegen eindeloze crawls (standaard 1000). De crawl negeert zoekparameters en volgt enkel links op hetzelfde domein.
 
 ## Beveiliging
