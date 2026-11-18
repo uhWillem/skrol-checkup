@@ -53,6 +53,8 @@ export interface Config {
   /** Adressen van Google; enkel anders in tests. */
   googleAuthUrl: string;
   googleTokenUrl: string;
+  /** Uploadadres van de Google Drive API, voor het rapport als Google Doc; enkel anders in tests. */
+  googleDriveUploadUrl: string;
 }
 
 export function googleLoginEnabled(config: Config): boolean {
@@ -117,5 +119,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dashboardEmails: list(env.DASHBOARD_EMAILS, []).map((e) => e.replace(/^@/, "")),
     googleAuthUrl: env.GOOGLE_AUTH_URL ?? "https://accounts.google.com/o/oauth2/v2/auth",
     googleTokenUrl: env.GOOGLE_TOKEN_URL ?? "https://oauth2.googleapis.com/token",
+    googleDriveUploadUrl: env.GOOGLE_DRIVE_UPLOAD_URL ?? "https://www.googleapis.com/upload/drive/v3/files",
   };
 }

@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { dashboardEnabled, type Config } from "./config.js";
+import { dashboardEnabled, googleLoginEnabled, type Config } from "./config.js";
 import type { JobStore } from "./jobs.js";
 import { CHECKS, type Finding, type Job } from "./types.js";
 import type { UrlGuard } from "./url-guard.js";
@@ -52,7 +52,12 @@ export function createMcpServer(
   /** Links naar het rapport in het dashboard; wie ze opent, moet inloggen op het dashboard. */
   const report = (job: Job) =>
     job.status === "done" && dashboard
-      ? { pdf: `${dashboard}/jobs/${job.id}/rapport.pdf`, csv: `${dashboard}/jobs/${job.id}/bevindingen.csv` }
+      ? {
+          pdf: `${dashboard}/jobs/${job.id}/rapport.pdf`,
+          csv: `${dashboard}/jobs/${job.id}/bevindingen.csv`,
+          // Opent na toestemming voor Google Drive het rapport als Google Doc; enkel met de Google-login.
+          ...(googleLoginEnabled(config) ? { googleDoc: `${dashboard}/jobs/${job.id}/google-doc` } : {}),
+        }
       : undefined;
 
   /** Een job zoals list_checkups, cancel_checkup en restart_checkup ze tonen. */
@@ -253,7 +258,7 @@ export function createMcpServer(
       description:
         "Geeft de check-ups op de server, de nieuwste eerst: lopende, in de wachtrij (met queuePosition) en afgelopen " +
         "(done, failed of cancelled), met voortgang, foutmelding, aantal bevindingen per prioriteit en voor afgeronde check-ups " +
-        "links naar het rapport als PDF en CSV (report; wie ze opent, moet inloggen op het dashboard). " +
+        "links naar het rapport als PDF, CSV en Google Doc (report; wie ze opent, moet inloggen op het dashboard). " +
         "Filter op status of op een deel van de URL, bv. de naam van de klant. Gebruik dit om een job-ID terug te vinden, " +
         "te zien wat er loopt of in de wachtrij staat, of een vorige check-up op te zoeken.",
       inputSchema: {

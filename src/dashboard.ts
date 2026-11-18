@@ -1,12 +1,24 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { googleLoginEnabled, type Config } from "./config.js";
-import { finishLogin, logoutCookie, passwordSessionCookie, safeNext, sessionUser, startLogin } from "./google-login.js";
+import {
+  finishDriveExport,
+  finishLogin,
+  isDriveCallback,
+  logoutCookie,
+  passwordSessionCookie,
+  safeNext,
+  sessionUser,
+  startDriveExport,
+  startLogin,
+} from "./google-login.js";
+import { createGoogleDoc, DriveError } from "./google-drive.js";
 import type { JobStore } from "./jobs.js";
-import { findingsCsv, renderPdf, reportFileName, reportHtml } from "./report.js";
+import { findingsCsv, renderPdf, reportDocHtml, reportDocTitle, reportFileName, reportHtml } from "./report.js";
 import type { Job } from "./types.js";
 
-// Dashboard op /dashboard: lopende en vorige check-ups bekijken, annuleren en het rapport downloaden.
+// Dashboard op /dashboard: lopende en vorige check-ups bekijken, annuleren en het rapport downloaden of als
+// Google Doc in Google Drive zetten.
 // Beveiligd met een Google-login (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET en DASHBOARD_EMAILS), of anders met
 // HTTP Basic Auth: de browser vraagt het wachtwoord uit DASHBOARD_PASSWORD (de gebruikersnaam maakt niet uit).
 
@@ -144,6 +156,8 @@ export async function handleDashboard(
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const method = req.method ?? "GET";
   let user: string | undefined;
+  /** E-mailadres van wie met Google inlogde, als hint voor de toestemming voor Drive. */
+  let loginEmail: string | undefined;
 
   if (googleLoginEnabled(config)) {
     const withPassword = !!config.dashboardPassword;
@@ -181,6 +195,11 @@ export async function handleDashboard(
       const { location, setCookie } = startLogin(config, baseUrl, safeNext(url.searchParams.get("next")));
       return redirect(res, location, [setCookie]);
     }
+    if (path === `${DASHBOARD_PATH}/auth/callback` && method === "GET" && isDriveCallback(url)) {
+      // Terug van de toestemming voor Drive: enkel voor wie (nog) ingelogd is op het dashboard.
+      if (!signedIn) return redirect(res, `${DASHBOARD_PATH}/login?next=%2Fdashboard`);
+      return exportGoogleDoc(req, res, url, store, config, baseUrl);
+    }
     if (path === `${DASHBOARD_PATH}/auth/callback` && method === "GET") {
       const result = await finishLogin(req, url, config, baseUrl);
       if (!result.ok) return sendHtml(res, result.status, (nonce) => loginPage(nonce, "/dashboard", { error: result.error, withPassword }), result.setCookies);
@@ -194,6 +213,7 @@ export async function handleDashboard(
       return redirect(res, `${DASHBOARD_PATH}/login?next=${encodeURIComponent(url.pathname + url.search)}`);
     }
     user = "email" in signedIn ? signedIn.email : "Ingelogd met het wachtwoord";
+    loginEmail = "email" in signedIn ? signedIn.email : undefined;
   } else if (config.dashboardPassword) {
     const ip = clientIp(req);
     if (blocked(ip)) {
@@ -214,7 +234,7 @@ export async function handleDashboard(
   } else return sendJson(res, 404, { error: "niet gevonden" });
 
   if (path === DASHBOARD_PATH && (method === "GET" || method === "HEAD")) {
-    return sendHtml(res, 200, (nonce) => (method === "HEAD" ? "" : dashboardPage(nonce, user)));
+    return sendHtml(res, 200, (nonce) => (method === "HEAD" ? "" : dashboardPage(nonce, user, googleLoginEnabled(config))));
   }
 
   if (path === `${DASHBOARD_PATH}/api/jobs` && method === "GET") {
@@ -231,6 +251,18 @@ export async function handleDashboard(
     if (!job) return sendJson(res, 404, { error: "Onbekende check-up." });
     if (!(await store.cancel(id))) return sendJson(res, 409, { error: "Deze check-up is al afgelopen.", job: view(job) });
     return sendJson(res, 200, { job: view(job) });
+  }
+
+  const googleDoc = path.match(/^\/dashboard\/jobs\/([^/]+)\/google-doc$/);
+  if (googleDoc && method === "GET") {
+    // De export heeft de OAuth-client van de Google-login nodig.
+    if (!googleLoginEnabled(config)) return sendJson(res, 404, { error: "niet gevonden" });
+    const id = googleDoc[1];
+    const job = JOB_ID.test(id) ? store.get(id) : undefined;
+    if (!job) return sendJson(res, 404, { error: "Onbekende check-up." });
+    if (job.status !== "done") return sendJson(res, 409, { error: "Enkel een afgeronde check-up heeft een rapport." });
+    const { location, setCookie } = startDriveExport(config, baseUrl, id, loginEmail);
+    return redirect(res, location, [setCookie]);
   }
 
   const download = path.match(/^\/dashboard\/jobs\/([^/]+)\/(rapport\.pdf|bevindingen\.csv)$/);
@@ -259,6 +291,52 @@ export async function handleDashboard(
   }
 
   return sendJson(res, 404, { error: "niet gevonden" });
+}
+
+/** Zet het rapport als Google Doc in de Drive van wie toestemming gaf, en opent het. */
+async function exportGoogleDoc(req: IncomingMessage, res: ServerResponse, url: URL, store: JobStore, config: Config, baseUrl: string): Promise<void> {
+  const auth = await finishDriveExport(req, url, config, baseUrl);
+  if (!auth.ok) return sendHtml(res, auth.status, (nonce) => errorPage(nonce, auth.error), auth.setCookies);
+  const retry = `${DASHBOARD_PATH}/jobs/${encodeURIComponent(auth.jobId)}/google-doc`;
+  const job = JOB_ID.test(auth.jobId) ? store.get(auth.jobId) : undefined;
+  const result = job?.status === "done" ? await store.result(auth.jobId) : undefined;
+  if (!job || !result) return sendHtml(res, 404, (nonce) => errorPage(nonce, "Deze check-up of haar rapport bestaat niet meer."), auth.setCookies);
+  try {
+    const link = await createGoogleDoc(auth.accessToken, reportDocTitle(job), reportDocHtml(job, result), config);
+    // Enkel naar Google Docs of Drive doorsturen, nooit naar een ander adres.
+    const safe = /^https:\/\/(docs|drive)\.google\.com\//.test(link) ? link : `${DASHBOARD_PATH}`;
+    return redirect(res, safe, auth.setCookies);
+  } catch (error) {
+    const message = error instanceof DriveError ? error.message : "Het Google Doc maken is mislukt. Probeer opnieuw.";
+    return sendHtml(res, 502, (nonce) => errorPage(nonce, message, retry), auth.setCookies);
+  }
+}
+
+function errorPage(nonce: string, message: string, retry?: string): string {
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Google Doc | Skrol check-ups</title>
+<link rel="icon" href="data:,">
+<style nonce="${nonce}">
+  body { margin: 0; background: #fff; color: #1d2126; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 18vh 24px 64px; }
+  h1 { font-size: 26px; line-height: 1.2; margin: 0 0 16px; }
+  .message { color: #b4372c; background: #fbeceb; padding: 10px 14px; border-radius: 6px; margin: 0 0 24px; }
+  a { color: #2f62d6; font-weight: 500; margin-right: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Geen Google Doc gemaakt</h1>
+  <p class="message" role="alert">${esc(message)}</p>
+  ${retry ? `<a href="${esc(retry)}">Opnieuw proberen</a>` : ""}<a href="/dashboard">Naar het dashboard</a>
+</main>
+</body>
+</html>`;
 }
 
 function loginPage(nonce: string, next: string, message: { notice?: string; error?: string; withPassword?: boolean; open?: boolean }): string {
@@ -319,7 +397,7 @@ function loginPage(nonce: string, next: string, message: { notice?: string; erro
 </html>`;
 }
 
-function dashboardPage(nonce: string, user?: string): string {
+function dashboardPage(nonce: string, user?: string, googleDoc = false): string {
   return `<!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -422,7 +500,7 @@ function dashboardPage(nonce: string, user?: string): string {
     <h1>Check-ups</h1>
     <span class="updated"><span id="updated"></span>${user ? ` <span class="user">${esc(user)}</span> <a href="/dashboard/logout">Uitloggen</a>` : ""}</span>
   </header>
-  <p class="intro">Alle check-ups van de Skrol-browsertool. Een nieuwe check-up start je in Claude met de skill webflow-checkup; hier volg je ze op, stop je er een en download je het rapport.</p>
+  <p class="intro">Alle check-ups van de Skrol-browsertool. Een nieuwe check-up start je in Claude met de skill webflow-checkup; hier volg je ze op, stop je er een en download je het rapport of zet je het als Google Doc in je Drive.</p>
   <p class="notice" id="notice" role="status" aria-live="polite"></p>
 
   <section aria-labelledby="active-title">
@@ -440,6 +518,7 @@ function dashboardPage(nonce: string, user?: string): string {
 </main>
 <script nonce="${nonce}">
 "use strict";
+const GOOGLE_DOC = ${googleDoc ? "true" : "false"};
 const STATUS = { queued: "In de wachtrij", running: "Bezig", done: "Klaar", failed: "Mislukt", cancelled: "Geannuleerd" };
 const DAY = new Intl.DateTimeFormat("nl-BE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const DAY_YEAR = new Intl.DateTimeFormat("nl-BE", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -590,7 +669,8 @@ function downloadsCell(job) {
   const base = "/dashboard/jobs/" + encodeURIComponent(job.id);
   return el("div", { class: "downloads" },
     el("a", { href: base + "/rapport.pdf", title: "Rapport als PDF" }, "PDF"),
-    el("a", { href: base + "/bevindingen.csv", title: "Alle bevindingen als CSV, voor Excel of Google Sheets" }, "CSV"));
+    el("a", { href: base + "/bevindingen.csv", title: "Alle bevindingen als CSV, voor Excel of Google Sheets" }, "CSV"),
+    GOOGLE_DOC ? el("a", { href: base + "/google-doc", target: "_blank", rel: "noopener", title: "Rapport als Google Doc in je Google Drive" }, "Google Doc") : null);
 }
 
 function renderHistory(history) {

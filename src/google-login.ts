@@ -166,6 +166,82 @@ export async function finishLogin(req: IncomingMessage, url: URL, config: Config
   return { ok: true, email, next: login.n, setCookies: [...clear, cookie(SESSION_COOKIE, session, SESSION_SECONDS, secure)] };
 }
 
+// Rapport als Google Doc: een tweede, losse toestemming voor Google Drive met de scope drive.file (enkel
+// bestanden die de tool zelf maakt, geen andere bestanden in de Drive). Ze loopt via dezelfde callback als de
+// login; een state die begint met "d." hoort bij een export. Het access token wordt meteen gebruikt en nergens
+// bewaard.
+export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_COOKIE = "checkup_drive";
+
+/** Komt deze callback van een export naar Google Docs, en niet van een login? */
+export function isDriveCallback(url: URL): boolean {
+  return (url.searchParams.get("state") ?? "").startsWith("d.");
+}
+
+/** Begin van een export: naar Google voor toestemming voor Drive, met het job-ID, de state en PKCE in een kort cookie. */
+export function startDriveExport(config: Config, baseUrl: string, jobId: string, loginHint?: string): { location: string; setCookie: string } {
+  const state = `d.${randomBytes(16).toString("base64url")}`;
+  const verifier = randomBytes(32).toString("base64url");
+  const params = new URLSearchParams({
+    client_id: config.googleClientId,
+    redirect_uri: `${baseUrl}${CALLBACK_PATH}`,
+    response_type: "code",
+    scope: DRIVE_SCOPE,
+    // Wie al toestemming gaf, ziet het toestemmingsscherm niet opnieuw.
+    include_granted_scopes: "true",
+    state,
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge_method: "S256",
+  });
+  if (loginHint) params.set("login_hint", loginHint);
+  const payload = { s: state, v: verifier, j: jobId, x: Math.floor(Date.now() / 1000) + LOGIN_SECONDS };
+  return {
+    location: `${config.googleAuthUrl}?${params}`,
+    setCookie: cookie(DRIVE_COOKIE, sign(payload, config), LOGIN_SECONDS, baseUrl.startsWith("https://")),
+  };
+}
+
+export type DriveAuthResult =
+  | { ok: true; jobId: string; accessToken: string; setCookies: string[] }
+  | { ok: false; status: number; error: string; setCookies: string[] };
+
+/** Terug van Google na de toestemming voor Drive: de code inwisselen voor een access token. */
+export async function finishDriveExport(req: IncomingMessage, url: URL, config: Config, baseUrl: string): Promise<DriveAuthResult> {
+  const clear = [cookie(DRIVE_COOKIE, "", 0, baseUrl.startsWith("https://"))];
+  const fail = (status: number, error: string): DriveAuthResult => ({ ok: false, status, error, setCookies: clear });
+
+  const pending = unsign<{ s: string; v: string; j: string; x: number }>(readCookie(req, DRIVE_COOKIE), config);
+  if (!pending || url.searchParams.get("state") !== pending.s) return fail(400, "De export naar Google Docs is verlopen of ongeldig. Probeer opnieuw.");
+  if (url.searchParams.get("error")) return fail(403, "Zonder toestemming voor Google Drive kan het rapport geen Google Doc worden.");
+  const code = url.searchParams.get("code");
+  if (!code) return fail(400, "Google gaf geen code terug. Probeer opnieuw.");
+
+  try {
+    const res = await fetch(config.googleTokenUrl, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: config.googleClientId,
+        client_secret: config.googleClientSecret,
+        redirect_uri: `${baseUrl}${CALLBACK_PATH}`,
+        grant_type: "authorization_code",
+        code_verifier: pending.v,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = (await res.json().catch(() => ({}))) as { access_token?: string; scope?: string; error?: string };
+    if (!res.ok || !body.access_token) return fail(502, `Google weigerde de toegang tot Drive${body.error ? ` (${body.error})` : ""}. Probeer opnieuw.`);
+    // Met de gedetailleerde toestemming kan iemand Drive uitvinken: dan is er een token zonder Drive.
+    if (body.scope && !body.scope.split(" ").includes(DRIVE_SCOPE)) {
+      return fail(403, "Google gaf geen toegang tot Drive. Vink bij de toestemming Google Drive aan en probeer opnieuw.");
+    }
+    return { ok: true, jobId: pending.j, accessToken: body.access_token, setCookies: clear };
+  } catch {
+    return fail(502, "Google antwoordde niet. Probeer opnieuw.");
+  }
+}
+
 export function logoutCookie(baseUrl: string): string {
   return cookie(SESSION_COOKIE, "", 0, baseUrl.startsWith("https://"));
 }
