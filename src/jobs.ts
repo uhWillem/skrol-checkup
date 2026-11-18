@@ -12,6 +12,8 @@ export class JobStore {
   private results = new Map<string, CheckupResult>();
   private waiting: string[] = [];
   private running = 0;
+  /** Per lopende check-up: de knop om ze te stoppen. */
+  private controllers = new Map<string, AbortController>();
 
   constructor(
     private config: Config,
@@ -26,7 +28,8 @@ export class JobStore {
 
   private async save(job: Job): Promise<void> {
     await mkdir(this.dir(job.id), { recursive: true });
-    const tmp = join(this.dir(job.id), "job.json.tmp");
+    // Eigen tijdelijk bestand per schrijfactie: twee saves tegelijk mogen elkaar niet in de weg zitten.
+    const tmp = join(this.dir(job.id), `job.json.${randomBytes(4).toString("hex")}.tmp`);
     await writeFile(tmp, JSON.stringify(job, null, 2));
     await rename(tmp, join(this.dir(job.id), "job.json"));
   }
@@ -53,6 +56,28 @@ export class JobStore {
 
   get(id: string): Job | undefined {
     return this.jobs.get(id);
+  }
+
+  /** Alle jobs, de nieuwste eerst. */
+  list(): Job[] {
+    return [...this.jobs.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  /**
+   * Annuleert een job in de wachtrij of een lopende check-up. Een lopende check-up stopt binnen enkele
+   * seconden: de browser sluit meteen, de linkcontrole maakt enkel de verzoeken af die al vertrokken zijn.
+   * Geeft false als de job al afgelopen was.
+   */
+  async cancel(id: string): Promise<boolean> {
+    const job = this.jobs.get(id);
+    if (!job || (job.status !== "queued" && job.status !== "running")) return false;
+    if (job.status === "queued") this.waiting = this.waiting.filter((w) => w !== id);
+    else this.controllers.get(id)?.abort();
+    job.status = "cancelled";
+    job.finishedAt = new Date().toISOString();
+    job.progress = { ...job.progress, phase: "geannuleerd" };
+    await this.save(job);
+    return true;
   }
 
   async start(url: string, options: { liveDomain?: string } = {}): Promise<Job> {
@@ -85,6 +110,8 @@ export class JobStore {
 
   private async execute(id: string): Promise<void> {
     const job = this.jobs.get(id)!;
+    const controller = new AbortController();
+    this.controllers.set(id, controller);
     job.status = "running";
     job.startedAt = new Date().toISOString();
     await this.save(job);
@@ -94,18 +121,27 @@ export class JobStore {
         job.progress = progress;
         if (Date.now() - lastSave > 2_000) {
           lastSave = Date.now();
-          void this.save(job);
+          void this.save(job).catch(() => undefined);
         }
-      }, { ...this.runDefaults, liveDomain: job.liveDomain });
+      }, { ...this.runDefaults, liveDomain: job.liveDomain, signal: controller.signal });
+      controller.signal.throwIfAborted();
       await writeFile(join(this.dir(id), "result.json"), JSON.stringify(result, null, 2));
       this.results.set(id, result);
       job.status = "done";
       job.summary = result.summary;
     } catch (error) {
-      job.status = "failed";
-      job.error = (error as Error).message;
+      if (!controller.signal.aborted) {
+        job.status = "failed";
+        job.error = (error as Error).message;
+      }
+    } finally {
+      this.controllers.delete(id);
     }
-    job.finishedAt = new Date().toISOString();
+    if (controller.signal.aborted) {
+      // cancel() heeft status en eindtijd al gezet; de voortgang kan intussen nog bijgewerkt zijn.
+      job.status = "cancelled";
+      job.progress = { ...job.progress, phase: "geannuleerd" };
+    } else job.finishedAt = new Date().toISOString();
     await this.save(job);
   }
 

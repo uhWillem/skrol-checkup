@@ -43,6 +43,8 @@ export interface Config {
   publicUrl: string;
   /** Aantal dagen dat screenshots bewaard blijven. */
   screenshotDays: number;
+  /** Wachtwoord van het dashboard op /dashboard; leeg = geen dashboard. */
+  dashboardPassword: string;
 }
 
 function list(value: string | undefined, fallback: string[]): string[] {
@@ -92,5 +94,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webflowApiBase: (env.WEBFLOW_API_BASE ?? "https://api.webflow.com").replace(/\/$/, ""),
     publicUrl: (env.PUBLIC_URL ?? "").replace(/\/$/, ""),
     screenshotDays: int(env.SCREENSHOT_DAYS, 180),
+    dashboardPassword: env.DASHBOARD_PASSWORD ?? "",
   };
 }

@@ -74,15 +74,17 @@ export async function checkLink(url: string, config: Config, guard: UrlGuard): P
 }
 
 /** Voert taken uit met een maximum aantal tegelijk. */
-export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>, signal?: AbortSignal): Promise<R[]> {
   const results = new Array<R>(items.length);
   let next = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
+    // Na een annulering geen nieuwe items meer; wat al loopt, maakt zijn verzoek af.
+    while (next < items.length && !signal?.aborted) {
       const index = next++;
       results[index] = await fn(items[index]);
     }
   });
   await Promise.all(workers);
+  signal?.throwIfAborted();
   return results;
 }

@@ -8,7 +8,7 @@ import { normalizeDomain } from "./discover.js";
 import { takeScreenshot } from "./screenshot.js";
 import { SCREENSHOT_ROUTE, type ScreenshotStore } from "./screenshot-store.js";
 
-export const VERSION = "0.7.0";
+export const VERSION = "0.8.0";
 const MAX_PAGES_SHOWN = 20;
 
 /** Welke checklist-punten deze versie automatisch controleert; controles die niet gelopen hebben tellen niet mee. */
@@ -24,6 +24,13 @@ function json(value: unknown) {
 
 function fail(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true };
+}
+
+/** Waarom er (nog) geen resultaten zijn. */
+function notDone(status: string): string {
+  if (status === "cancelled") return "Deze check-up is geannuleerd. Start ze opnieuw met start_checkup.";
+  if (status === "failed") return "Deze check-up is mislukt; de foutmelding staat in get_checkup_status.";
+  return `De check-up is nog niet klaar (status: ${status}).`;
 }
 
 function compact(f: Finding) {
@@ -80,7 +87,7 @@ export function createMcpServer(
     {
       title: "Status van een check-up",
       description:
-        "Geeft de status en voortgang van een check-up. Als ze klaar is, staat er een samenvatting bij " +
+        "Geeft de status en voortgang van een check-up (queued, running, done, failed of cancelled: geannuleerd in het dashboard). Als ze klaar is, staat er een samenvatting bij " +
         "(aantal bevindingen per prioriteit en per controle) en de lijst checklist-punten die deze versie controleert. " +
         "Punten die niet in die lijst staan, moet het team manueel nakijken. Met een live domein vergelijkt de tool ook de oude site " +
         "(summary.migration); kon dat niet, dan staat de reden in summary.skipped.",
@@ -117,7 +124,7 @@ export function createMcpServer(
     async ({ job_id, check, page, hint, offset, limit }) => {
       const job = store.get(job_id);
       if (!job) return fail(`Onbekende job: ${job_id}`);
-      if (job.status !== "done") return fail(`De check-up is nog niet klaar (status: ${job.status}).`);
+      if (job.status !== "done") return fail(notDone(job.status));
       const result = await store.findings(job_id, { check, page, hint, offset, limit });
       if (!result) return fail("Resultaten niet gevonden.");
       return json({ total: result.total, offset: result.offset, next_offset: result.nextOffset, findings: result.findings.map(compact) });
@@ -138,7 +145,7 @@ export function createMcpServer(
       const job = store.get(job_id);
       if (!job) return fail(`Onbekende job: ${job_id}`);
       const result = await store.result(job_id);
-      if (!result) return fail(`De check-up is nog niet klaar (status: ${job.status}).`);
+      if (!result) return fail(notDone(job.status));
       const sections = new Map<string, number>();
       for (const p of result.pages) {
         const section = p.path === "/" ? "/" : `/${p.path.split("/")[1]}`;

@@ -52,6 +52,8 @@ export interface CheckupOptions {
   liveDomain?: string;
   /** Enkel voor tests: waar de oude site staat, in plaats van https://www.{live domein}. */
   oldSiteCandidates?: string[];
+  /** Annuleert de check-up: de browser sluit meteen, de rest stopt bij de volgende stap. */
+  signal?: AbortSignal;
 }
 
 export interface CheckupResult {
@@ -142,6 +144,13 @@ export async function runCheckup(
   onProgress: (p: Progress) => void = () => undefined,
   options: CheckupOptions = {},
 ): Promise<CheckupResult> {
+  const signal = options.signal;
+  signal?.throwIfAborted();
+  // Elke voortgangsstap is ook een punt waar een annulering de check-up stopt.
+  const report = (p: Progress): void => {
+    signal?.throwIfAborted();
+    onProgress(p);
+  };
   const startUrl = normalizePageUrl(startInput);
   if (!startUrl) throw new Error(`Ongeldige URL: ${startInput}`);
   if (!guard.isAllowedPage(startUrl)) {
@@ -162,7 +171,7 @@ export async function runCheckup(
   /** SEO-gegevens per pad, uit de HTML die de server teruggaf. */
   const seoPages = new Map<string, SeoPage>();
 
-  onProgress({ pagesDone: 0, pagesFound: 1, phase: "sitemap lezen" });
+  report({ pagesDone: 0, pagesFound: 1, phase: "sitemap lezen" });
   const sitemap = await readSitemap(origin, async (url) => {
     try {
       const res = await fetchWithGuard(url, "GET", config, guard);
@@ -203,7 +212,11 @@ export async function runCheckup(
   let started = 0;
 
   const browser = await launchChromium(config);
+  // Bij een annulering de browser meteen sluiten: pagina's die nog laden, breken dan af.
+  const closeOnAbort = () => void browser.close().catch(() => undefined);
+  signal?.addEventListener("abort", closeOnAbort, { once: true });
   try {
+    signal?.throwIfAborted();
     const context = await guardedContext(browser, config, guard);
 
     const visit = async (url: string): Promise<void> => {
@@ -315,6 +328,7 @@ export async function runCheckup(
 
     const worker = async (): Promise<void> => {
       for (;;) {
+        if (signal?.aborted) return;
         const next = queue.shift();
         if (!next) {
           if (active === 0) return;
@@ -333,13 +347,13 @@ export async function runCheckup(
           await visit(next);
         } finally {
           active--;
-          onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "pagina's controleren" });
+          report({ pagesDone: pages.length, pagesFound: seen.size, phase: "pagina's controleren" });
         }
       }
     };
     await Promise.all(Array.from({ length: config.pageConcurrency }, worker));
 
-    onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "navigatie controleren" });
+    report({ pagesDone: pages.length, pagesFound: seen.size, phase: "navigatie controleren" });
     try {
       for (const draft of await navigationDrafts(context, startUrl, config.pageTimeoutMs)) findings.add(draft, pathOf(startUrl));
     } catch (e) {
@@ -348,8 +362,10 @@ export async function runCheckup(
     }
     await context.close();
   } finally {
-    await browser.close();
+    signal?.removeEventListener("abort", closeOnAbort);
+    await browser.close().catch(() => undefined);
   }
+  signal?.throwIfAborted();
 
   const startPage = pages.find((p) => p.url === startUrl);
   if (!startPage || startPage.error || startPage.status === null || startPage.status >= 400) {
@@ -359,7 +375,7 @@ export async function runCheckup(
   for (const { draft, page } of fontDrafts(fontRequests)) findings.add(draft, page);
 
   // SEO over de hele site.
-  onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "SEO controleren" });
+  report({ pagesDone: pages.length, pagesFound: seen.size, phase: "SEO controleren" });
   const robots = await fetchWithGuard(new URL("/robots.txt", origin).toString(), "GET", config, guard).catch(() => null);
   const deadPaths = sitemap.pages.filter((u) => {
     const s = pageStatus.get(u);
@@ -379,7 +395,7 @@ export async function runCheckup(
 
   // Webflow-lezer: CMS, paginanamen, drafts en tijdzone uit de Webflow API.
   let webflow: WebflowSummary | undefined;
-  onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "Webflow lezen" });
+  report({ pagesDone: pages.length, pagesFound: seen.size, phase: "Webflow lezen" });
   const wf = await readWebflow(config, startHost).catch((e: Error) => ({ skipped: `fout bij het lezen van Webflow: ${e.message.split("\n")[0]}` }));
   if ("skipped" in wf) for (const check of WEBFLOW_CHECKS) skipped.push({ check, reason: wf.skipped });
   else {
@@ -399,7 +415,7 @@ export async function runCheckup(
   if (liveDomain && matchesDomain(startHost, [liveDomain])) {
     for (const check of MIGRATION_CHECKS) skipped.push({ check, reason: "de gecontroleerde site staat zelf op het live domein: er is geen oude site om mee te vergelijken" });
   } else if (liveDomain) {
-    onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "oude site vergelijken" });
+    report({ pagesDone: pages.length, pagesFound: seen.size, phase: "oude site vergelijken" });
     const result = await migrationDrafts(
       liveDomain,
       origin,
@@ -407,7 +423,7 @@ export async function runCheckup(
       pageStatus,
       config,
       guard,
-      (done, total) => onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: `oude site vergelijken (${done}/${total})` }),
+      (done, total) => report({ pagesDone: pages.length, pagesFound: seen.size, phase: `oude site vergelijken (${done}/${total})` }),
       options.oldSiteCandidates,
     ).catch((e: Error) => ({ skipped: `fout bij het lezen van de oude site: ${e.message.split("\n")[0]}` }));
     if ("skipped" in result) for (const check of MIGRATION_CHECKS) skipped.push({ check, reason: result.skipped });
@@ -422,8 +438,8 @@ export async function runCheckup(
     for (const check of MIGRATION_CHECKS) skipped.push({ check, reason });
   }
 
-  onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "links controleren" });
-  await checkAllLinks(occurrences, origin, liveDomain, pageStatus, config, guard, findings);
+  report({ pagesDone: pages.length, pagesFound: seen.size, phase: "links controleren" });
+  await checkAllLinks(occurrences, origin, liveDomain, pageStatus, config, guard, findings, signal);
 
   const list = findings.list();
   const summary: CheckupSummary = {
@@ -443,7 +459,7 @@ export async function runCheckup(
     summary.byHint[f.hint]++;
     summary.byCheck[f.check] = (summary.byCheck[f.check] ?? 0) + 1;
   }
-  onProgress({ pagesDone: pages.length, pagesFound: seen.size, phase: "klaar" });
+  report({ pagesDone: pages.length, pagesFound: seen.size, phase: "klaar" });
   return { startUrl, pages, findings: list, summary };
 }
 
@@ -457,6 +473,7 @@ async function checkAllLinks(
   config: Config,
   guard: UrlGuard,
   findings: FindingSet,
+  signal?: AbortSignal,
 ): Promise<void> {
   // checkUrl: wat er echt opgevraagd wordt. Een link naar het live domein wordt op de nieuwe site gecontroleerd,
   // want na de lancering draait die site op dat domein.
@@ -507,7 +524,7 @@ async function checkAllLinks(
     }
     const status = await checkLink(entry.checkUrl, config, guard);
     return { ...status, url };
-  });
+  }, signal);
 
   for (const result of results) {
     if (result.verdict === "ok") continue;

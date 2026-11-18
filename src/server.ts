@@ -8,6 +8,7 @@ import { createMcpServer, VERSION } from "./mcp.js";
 import { UrlGuard } from "./url-guard.js";
 import { ScreenshotStore } from "./screenshot-store.js";
 import { join } from "node:path";
+import { DASHBOARD_PATH, handleDashboard } from "./dashboard.js";
 
 const MAX_BODY = 1_000_000;
 
@@ -91,6 +92,18 @@ export async function startServer(config: Config = loadConfig(), runDefaults: Ch
       });
       return res.end(req.method === "HEAD" ? undefined : image);
     }
+    if (url.pathname === DASHBOARD_PATH || url.pathname.startsWith(`${DASHBOARD_PATH}/`)) {
+      try {
+        return await handleDashboard(req, res, url, store, config);
+      } catch (error) {
+        if (!res.headersSent) return send(res, 500, { error: (error as Error).message });
+        return void res.end();
+      }
+    }
+    if (url.pathname === "/" && config.dashboardPassword && config.mcpPath !== "/") {
+      res.writeHead(302, { location: DASHBOARD_PATH });
+      return void res.end();
+    }
     if (url.pathname !== config.mcpPath) return send(res, 404, { error: "niet gevonden" });
     if (!authorized(req, config.apiKey)) return send(res, 401, { error: "niet geautoriseerd" });
     if (req.method !== "POST") {
@@ -126,5 +139,6 @@ if (isMain) {
     console.log(`skrol-checkup ${VERSION} luistert op poort ${port}, pad ${config.mcpPath}`);
     console.log(`Toegestane domeinen: ${config.allowedDomains.join(", ")}`);
     if (!config.apiKey) console.log("Let op: geen API_KEY ingesteld; enkel de firewall beschermt de server.");
+    console.log(config.dashboardPassword ? `Dashboard op ${DASHBOARD_PATH}` : "Geen DASHBOARD_PASSWORD ingesteld: het dashboard staat uit.");
   });
 }

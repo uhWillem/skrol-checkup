@@ -166,7 +166,7 @@ export interface CheckupSummary {
   skipped?: Array<{ check: string; reason: string }>;
 }
 
-export type JobStatus = "queued" | "running" | "done" | "failed";
+export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 
 export interface Job {
   id: string;
